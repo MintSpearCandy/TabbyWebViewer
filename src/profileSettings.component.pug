@@ -1,0 +1,25 @@
+.form-line
+    .header
+        .title URL
+        .description Page to open when a pane is created from this profile (localhost / IP default to http://, other hosts to https://)
+    input.form-control(
+        type='text',
+        [(ngModel)]='profile.options.url',
+        placeholder='https://example.internal:8443/dashboard')
+
+.form-line
+    .header
+        .title Ignore certificate errors
+        .description Trust self-signed certificates. Only applies to this profile's browsing data
+    input(
+        type='checkbox',
+        [(ngModel)]='profile.options.ignoreCertErrors')
+
+.form-line
+    .header
+        .title Share browsing data between panes of this profile
+        .description Off: every pane gets its own isolated, persistent cookie jar. On: panes of this profile share one login
+    input(
+        type='checkbox',
+        [checked]='sharedPartition',
+        (change)='onSharedPartitionChange($event.target.checked)')

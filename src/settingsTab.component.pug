@@ -1,0 +1,25 @@
+h3 Web Viewer
+
+.form-line
+    .header
+        .title Default scheme for bare hosts
+        .description Scheme prepended when a URL without one is entered (localhost and IP hosts always use http)
+    select.form-control(
+        style='max-width: 120px',
+        [(ngModel)]='defaultScheme',
+        (ngModelChange)='save()')
+        option(value='https') https://
+        option(value='http') http://
+
+.form-line
+    .header
+        .title Browsing data
+        .description
+            | Each pane keeps its own isolated, persistent cookie jar on disk.
+            | {{partitionCount}} partition{{partitionCount === 1 ? '' : 's'}} currently exist (including panes from previous sessions).
+    div
+        button.btn.btn-danger(
+            (click)='clearAll()',
+            [disabled]='clearing || partitionCount === 0')
+            | {{clearing ? 'Clearing…' : 'Clear all browsing data'}}
+        span.text-muted(*ngIf='clearedMessage', style='margin-left: 8px') {{clearedMessage}}

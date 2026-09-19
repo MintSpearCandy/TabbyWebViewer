@@ -1,0 +1,8 @@
+node_modules/
+dist/
+test-build/
+release/
+*.log
+
+# e2e debug environment (Tabby exe copy + local config)
+test-env/
