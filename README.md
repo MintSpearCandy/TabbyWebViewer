@@ -19,6 +19,10 @@ terminals — for dashboards, admin panels, docs, anything your servers serve.
   panes.
 - **Full HTTPS support** — with an optional per-profile *ignore certificate
   errors* switch for self-signed certificates (scoped to that profile's data).
+- **Client certificates (mTLS)** — sites that require a client certificate
+  automatically use matching certificates from the OS certificate store,
+  exactly like a desktop browser: a single match is auto-selected (remembered
+  per host), several matches open Tabby's selector to pick one.
 - **Developer tools** — `F12` / `Ctrl+Shift+I` opens a detached Chromium
   DevTools window; the page context menu has *Inspect element*. This is the
   complete Chrome DevTools: network recording, JS breakpoints, element
@@ -58,8 +62,13 @@ restart Tabby.
 ```bash
 cd WebViewer
 npm install
-npm run package:install   # builds + copies into %USERPROFILE%\.tabby\plugins
+npm run package:install   # builds + installs into Tabby's plugins directory
 ```
+
+The install script resolves the plugins directory in this order:
+`TABBY_PLUGINS_DIR` env override → portable install (`<exe>\data\plugins`,
+e.g. `D:\App\Tabby\data\plugins`) → platform default
+(`%APPDATA%\tabby\plugins` on Windows).
 
 Then fully exit Tabby (including the tray icon) and start it again.
 

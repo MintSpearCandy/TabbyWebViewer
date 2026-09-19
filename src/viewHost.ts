@@ -41,6 +41,13 @@ interface Bounds {
 const ERR_ABORTED = -3
 
 export class ViewerView {
+    /** webContents ids of all live views — used to attribute app-level events. */
+    private static readonly liveIds = new Set<number>()
+
+    static isWebViewerWebContents (id: number): boolean {
+        return ViewerView.liveIds.has(id)
+    }
+
     readonly webContents: any
     private view: any
     private win: any
@@ -89,6 +96,7 @@ export class ViewerView {
             },
         })
         this.webContents = this.view.webContents
+        ViewerView.liveIds.add(this.webContents.id)
         this.win.contentView.addChildView(this.view)
         this.zoomFactor = currentWebContents().getZoomFactor()
         this.wireEvents()
@@ -269,6 +277,7 @@ export class ViewerView {
             return
         }
         this.dead = true
+        ViewerView.liveIds.delete(this.webContents.id)
         if (this.rafId !== null) {
             cancelAnimationFrame(this.rafId)
         }

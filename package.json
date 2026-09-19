@@ -1,6 +1,6 @@
 {
   "name": "tabby-webviewer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Web browser panes inside Tabby — one independent, persistent browser environment per pane, with HTTPS support and DevTools",
   "keywords": [
     "tabby-plugin"

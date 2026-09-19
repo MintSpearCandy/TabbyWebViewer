@@ -112,11 +112,25 @@ if (process.platform === 'win32') {
 
 // --------------------------------------------------------------- install ----
 
-// Tabby's config dir is platform-specific (matches Electron's appData):
-//   win32:  %APPDATA%\tabby
-//   darwin: ~/Library/Application Support/tabby
-//   linux:  ~/.config/tabby (or $XDG_CONFIG_HOME/tabby)
+// Plugin directory resolution, in priority order:
+//   1. TABBY_PLUGINS_DIR env var (explicit override)
+//   2. portable install: <Tabby exe dir>\data\plugins (Tabby resets userData
+//      to the data\ folder next to the exe when it exists — this machine's
+//      install lives at D:\App\Tabby)
+//   3. platform defaults: win32 %APPDATA%\tabby, darwin ~/Library/Application
+//      Support/tabby, linux ~/.config/tabby
+const PORTABLE_TABBY_DIRS = ['D:\\App\\Tabby']
+
 function tabbyPluginsDir () {
+    if (process.env.TABBY_PLUGINS_DIR) {
+        return process.env.TABBY_PLUGINS_DIR
+    }
+    for (const dir of PORTABLE_TABBY_DIRS) {
+        const portable = path.join(dir, 'data')
+        if (fs.existsSync(path.join(portable, 'config.yaml'))) {
+            return path.join(portable, 'plugins')
+        }
+    }
     if (process.platform === 'win32' && process.env.APPDATA) {
         return path.join(process.env.APPDATA, 'tabby', 'plugins')
     }

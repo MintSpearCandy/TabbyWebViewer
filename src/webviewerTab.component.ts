@@ -9,6 +9,7 @@ import {
 } from '@angular/core'
 import { AppService, BaseTabComponent, HotkeysService, RecoveryToken, SplitTabComponent } from 'tabby-core'
 import { hostnameOf, makeWebViewerProfile, newPartitionId, normalizeUrl, partitionName, WebViewerProfile } from './api'
+import { ensureClientCertificateSupport } from './clientCerts'
 import { currentWebContents } from './electronApi'
 import { LoadErrorInfo, OcclusionWatcher, ViewerView } from './viewHost'
 import { popupPageContextMenu } from './pageContextMenu'
@@ -77,6 +78,20 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
         // its input delivery, breaking any chord that begins with the
         // rearrange prefix (e.g. Ctrl+Shift+D = split-right)
         this.subscribeUntilDestroyed(this.app.tabDragActive$, drag => this.setDock('gesture', !!drag && this.lastVisible))
+
+        // mTLS: when a site requests a client certificate and several are
+        // available in the OS store, ask through Tabby's selector (choice is
+        // remembered per host; single-certificate hosts are auto-selected)
+        ensureClientCertificateSupport({
+            choose: (host, certs) => this.app.showSelector(
+                `Client certificate for ${host}`,
+                certs.map((cert, index) => ({
+                    name: cert.subjectName || `Certificate ${index + 1}`,
+                    description: `Issuer: ${cert.issuerName || 'unknown'}`,
+                    result: index,
+                })),
+            ).then(sel => (sel === undefined ? null : sel)),
+        })
         this.addEventListenerUntilDestroyed(document.documentElement, 'mousedown', e => {
             if (this.lastVisible && (e.target as HTMLElement)?.closest?.('split-tab-spanner')) {
                 this.setDock('gesture', true)

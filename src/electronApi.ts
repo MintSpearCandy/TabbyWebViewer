@@ -34,6 +34,14 @@ export function appGetPath (name: string): string {
     return remote.getBuiltin('app').getPath(name)
 }
 
+/**
+ * Subscribe to app-level client-certificate requests. The handler MUST call
+ * `callback` exactly once per event (undefined = reject the request).
+ */
+export function onSelectClientCertificate (handler: (...args: any[]) => void): void {
+    remote.getBuiltin('app').on('select-client-certificate', handler)
+}
+
 export function getWebContentsViewClass (): any {
     return remote.getBuiltin('WebContentsView')
 }
