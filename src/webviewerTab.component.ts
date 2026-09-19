@@ -10,7 +10,7 @@ import {
 import { AppService, BaseTabComponent, HotkeysService, RecoveryToken, SplitTabComponent } from 'tabby-core'
 import { hostnameOf, makeWebViewerProfile, newPartitionId, normalizeUrl, partitionName, WebViewerProfile } from './api'
 import { ensureClientCertificateSupport } from './clientCerts'
-import { currentWebContents } from './electronApi'
+import { currentWebContents, currentWindow, focusedWebContentsId } from './electronApi'
 import { LoadErrorInfo, OcclusionWatcher, ViewerView } from './viewHost'
 import { popupPageContextMenu } from './pageContextMenu'
 import { openInSystemBrowser } from './dataManagement'
@@ -24,8 +24,25 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
     static readonly RECOVERY_TYPE = 'webviewer-tab'
     /** HotkeysService dedupes by timeStamp; synthetic events need unique ones */
     private static syntheticTs = 0
-    /** Non-modifier keydowns we forwarded — their keyups must follow (pairing). */
-    private forwardedKeys = new Set<string>()
+    /**
+     * Physical key-down state, SHARED across panes: code → time of its last
+     * keydown. A keydown for a code that is already down (no keyup between)
+     * is an auto-repeat — dropped here, because the engine has no repeat
+     * dedupe of its own. Sharing matters: after a split hands the keyboard
+     * to the new pane mid-chord, Chromium loses the repeat history and
+     * delivers OS repeats to the new pane with isAutoRepeat=false, which
+     * would otherwise cascade into one split per repeat tick.
+     */
+    private static downKeys = new Map<string, number>()
+    /**
+     * Keydowns any pane has forwarded to the hotkey engine, SHARED: a keyup
+     * must reach the engine whichever pane it lands on. When a split moves
+     * the keyboard mid-chord, the releasing keyups arrive at the NEW pane —
+     * with per-pane pairing they would all be dropped, the engine's pressed
+     * set would keep the whole chord, and re-pressing just the modifiers
+     * re-matches the full combo (split-right again, no D pressed).
+     */
+    private static forwardedKeys = new Set<string>()
 
     @Input() profile: WebViewerProfile
     /** Focus the address bar on a URL-less pane — only for user-opened panes, not duplicates/splits. */
@@ -46,6 +63,11 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
     private lastVisible = false
     private claimingPaneFocus = false
     private occlusion: OcclusionWatcher | null = null
+    /** Subscription to the parent split's focusChanged$ (re-wired on re-parent). */
+    private paneFocusSub: { unsubscribe (): void } | null = null
+    private paneFocusParent: SplitTabComponent | null = null
+    /** Dock reason we last handed the keyboard to Tabby's DOM for. */
+    private keyboardHandoff: string | null = null
 
     constructor (
         injector: Injector,
@@ -69,10 +91,13 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
         this.icon = this.profile.icon || 'fas fa-globe'
 
         this.subscribeUntilDestroyed(this.visibility$, v => this.onViewVisibility(v))
-        // NOTE: no focused$/blurred$ subscriptions — programmatically taking
-        // and handing back keyboard focus between webContents created event
-        // feedback loops (focus storm). Focus interactions are limited to
-        // direct, user-initiated ones (clicking the page / the address bar).
+        // NOTE: no pane focused$/blurred$ subscriptions — SplitTabComponent
+        // re-emits focused to EVERY pane on window/tab focus, and reacting to
+        // those with programmatic keyboard moves between webContents creates
+        // event feedback loops (focus storm). Instead, keyboard focus follows
+        // the split's focusChanged$ (fired only when the focused PANE changes
+        // — split, pane-nav, pane close): the newly focused pane takes the
+        // keyboard (see wirePaneFocusHandover / claimKeyboardFocus).
         // Dock during gestures that would otherwise drag/tab under the overlay.
         // NOTE: rearrange-panes must NOT dock here — hiding the view kills
         // its input delivery, breaking any chord that begins with the
@@ -176,6 +201,7 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
 
     private onViewVisibility (v: boolean): void {
         this.lastVisible = v
+        this.wirePaneFocusHandover()
         this.view?.setVisible(v)
         if (v) {
             this.occlusion?.start()
@@ -188,10 +214,87 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
 
     private setDock (reason: string, on: boolean): void {
         this.view?.setDocked(reason, on)
-        if (on && reason !== 'gesture') {
-            // Hand the keyboard back to Tabby's DOM while the view is parked
-            currentWebContents().focus()
+        if (on) {
+            if (reason !== 'gesture' && this.isFocusedPane()) {
+                // Hand the keyboard back to Tabby's DOM while the view is parked.
+                // Only the focused pane may do this: during a split, the OLD
+                // pane's occlusion watcher false-positives on the layout churn
+                // and must not steal the keyboard the NEW pane just claimed.
+                currentWebContents().focus()
+                this.keyboardHandoff = reason
+            }
+        } else if (reason === this.keyboardHandoff) {
+            this.keyboardHandoff = null
+            if (this.isFocusedPane()) {
+                this.claimKeyboardFocus()  // the page can take over again
+            }
         }
+    }
+
+    // ------------------------------------------------------- pane focus ---
+    /**
+     * Keeps keyboard focus glued to the split's focused pane. Wired lazily —
+     * `parent` is only assigned once the pane is inserted into its split
+     * (after the component is created), and re-wired if the pane is dragged
+     * into another split.
+     */
+    private wirePaneFocusHandover (): void {
+        const parent = this.parent instanceof SplitTabComponent ? this.parent : null
+        if (parent === this.paneFocusParent) {
+            return
+        }
+        this.paneFocusSub?.unsubscribe()
+        this.paneFocusSub = null
+        this.paneFocusParent = parent
+        if (parent) {
+            this.paneFocusSub = parent.focusChanged$.subscribe(tab => this.onPaneFocusChanged(tab))
+        }
+    }
+
+    private onPaneFocusChanged (focused: BaseTabComponent): void {
+        if (focused === this) {
+            this.claimKeyboardFocus()
+        }
+    }
+
+    /**
+     * Take the keyboard for this pane: the page when it is showing, the
+     * address bar when the pane is parked on its empty/error page. Skips
+     * when the page already owns the keyboard, or when the user is typing
+     * in this pane's own address bar.
+     */
+    private claimKeyboardFocus (): void {
+        if (!this.lastVisible || !currentWindow().isFocused()) {
+            return
+        }
+        if (focusedWebContentsId() === this.view?.webContentsId) {
+            return  // our page already owns the keyboard
+        }
+        const ae = document.activeElement
+        const host = this.hostEl()
+        if (ae && ae !== document.body && host?.contains(ae)
+            && focusedWebContentsId() === currentWebContents().id) {
+            return  // the user is typing in this pane's address bar
+        }
+        if (ae && ae !== document.body && !host?.contains(ae) && ae.closest?.('webviewer-tab')) {
+            (ae as HTMLElement).blur()  // stale address-bar focus left in another pane
+        }
+        if (this.view?.isDocked()) {
+            currentWebContents().focus()  // typing must reach the address bar
+            this.addressBarInput?.nativeElement.focus()
+        } else {
+            this.view?.focus()
+        }
+    }
+
+    /** This pane's component host element, or null before the view exists. */
+    private hostEl (): HTMLElement | null {
+        return (this.content?.nativeElement as HTMLElement | undefined)?.closest?.('webviewer-tab') ?? null
+    }
+
+    private isFocusedPane (): boolean {
+        const parent = this.parent
+        return !(parent instanceof SplitTabComponent) || parent.getFocusedTab() === this
     }
 
     // --------------------------------------------------------- keyboard ---
@@ -202,12 +305,32 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
         if (input.type !== 'keyDown' && input.type !== 'keyUp') {
             return
         }
-        // Auto-repeat keydowns would re-trigger the hotkey engine on every
-        // repeat (and, combined with focus-follows-split, cascade into
-        // multiple splits from one held chord) — the engine has no
-        // same-hotkey dedupe. Skip repeats entirely.
-        if (input.isAutoRepeat) {
-            return
+        // Physical key-state gate (see WebViewerTabComponent.downKeys): a
+        // keydown for a key that is already down is an auto-repeat, flagged
+        // or not, and must reach neither the browser-key actions below nor
+        // the hotkey engine — both would re-fire per repeat tick, and the
+        // engine has no same-hotkey dedupe of its own. Keyups always clear
+        // the key, wherever the paired keydown went.
+        if (input.type === 'keyDown') {
+            const now = performance.now()
+            for (const [code, t] of WebViewerTabComponent.downKeys) {
+                if (t < now - 2000) {
+                    WebViewerTabComponent.downKeys.delete(code)  // mirror the engine's pressed-key TTL
+                }
+            }
+            if (WebViewerTabComponent.downKeys.has(input.code)) {
+                WebViewerTabComponent.downKeys.set(input.code, now)  // still held — keep it fresh
+                return
+            }
+            if (input.isAutoRepeat) {
+                // flagged repeat whose keydown went elsewhere (keyboard was
+                // on the DOM) — the key is held; record it and drop the event
+                WebViewerTabComponent.downKeys.set(input.code, now)
+                return
+            }
+            WebViewerTabComponent.downKeys.set(input.code, now)
+        } else {
+            WebViewerTabComponent.downKeys.delete(input.code)
         }
         const key = (input.key || '').toLowerCase()
         if (input.type === 'keyDown') {
@@ -263,18 +386,19 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
         // Forward modifier combos / F-keys so Tabby hotkeys (pane nav, tab
         // switching, rearrange-panes, ...) keep working while the page has
         // focus. Plain characters are NOT forwarded — they belong to the page.
-        // Modifier keys themselves are ALWAYS forwarded (their keyup carries
-        // no modifier flags and would otherwise leak a stuck modifier into
-        // the engine); non-modifier keyups are forwarded only to pair a
-        // previously-forwarded keydown.
+        // Modifier keydowns are ALWAYS forwarded (a later keyup of another
+        // key carries no modifier flags and would otherwise leak a stuck
+        // modifier into the engine); non-modifier events are forwarded only
+        // to pair with a forwarded keydown — pairing state is pane-shared so
+        // keyups survive the focus hop a split causes (see forwardedKeys).
         const isModifierKey = ['control', 'shift', 'alt', 'meta', 'altgraph', 'capslock'].includes(key)
         if (input.type === 'keyDown') {
             if (!(input.control || input.alt || input.meta) && !isModifierKey && !/^f\d{1,2}$/.test(key)) {
                 return
             }
-            this.forwardedKeys.add(input.code)
+            WebViewerTabComponent.forwardedKeys.add(input.code)
         } else {
-            if (!this.forwardedKeys.delete(input.code)) {
+            if (!WebViewerTabComponent.forwardedKeys.delete(input.code)) {
                 return
             }
         }
@@ -403,8 +527,13 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
     }
 
     private focusAddressBar (): void {
+        // Fallback scoped to THIS pane — a document-wide query would grab the
+        // first pane's input in a split layout
         const el = this.addressBarInput?.nativeElement as HTMLInputElement
-            ?? document.querySelector<HTMLInputElement>('.webviewer-address')
+            ?? this.hostEl()?.querySelector<HTMLInputElement>('.webviewer-address')
+        // The keyboard may sit on the native page view; hand it to the DOM so
+        // typing actually reaches the input (element focus alone doesn't)
+        currentWebContents().focus()
         el?.focus()
         el?.select()
     }
@@ -429,6 +558,9 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
     }
 
     ngOnDestroy (): void {
+        this.paneFocusSub?.unsubscribe()
+        this.paneFocusSub = null
+        this.paneFocusParent = null
         this.occlusion?.destroy()
         this.occlusion = null
         this.view?.destroy()

@@ -179,6 +179,11 @@ export class ViewerView {
         }
     }
 
+    /** Whether the view is currently parked off-screen (any dock reason). */
+    isDocked (): boolean {
+        return this.dockReasons.size > 0
+    }
+
     /**
      * Dock (reason = 'occlusion' | 'gesture' | 'state') parks the view
      * off-screen so DOM can show above it; undocking snaps it back.

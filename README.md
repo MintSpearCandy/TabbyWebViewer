@@ -33,6 +33,11 @@ terminals — for dashboards, admin panels, docs, anything your servers serve.
   F-keys are forwarded to Tabby's hotkey engine (pane navigation, tab
   switching, rearrange-panes…), and browser keys do what you expect:
   `F5`/`Ctrl+R` reload, `Alt+←`/`Alt+→` history, `Ctrl+L` address bar.
+- **Keyboard focus follows the focused pane** — splitting a pane
+  (`Ctrl+Shift+D`/`Ctrl+Shift+S`) puts the keyboard straight onto the new
+  pane's page, ready for the next action; pane navigation
+  (`Ctrl+Alt+arrows`) moves the keyboard with it, and closing a Tabby
+  modal (settings, command palette) hands focus back to the page.
 - **Page zoom on Tabby's zoom hotkeys** — with a page focused,
   `Ctrl+=`/`Ctrl+-`/`Ctrl+0` zoom the page contents (×1.25 per step,
   persisted per site) instead of Tabby's UI, just like terminal font-size
