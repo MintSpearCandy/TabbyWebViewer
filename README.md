@@ -33,6 +33,10 @@ terminals — for dashboards, admin panels, docs, anything your servers serve.
   F-keys are forwarded to Tabby's hotkey engine (pane navigation, tab
   switching, rearrange-panes…), and browser keys do what you expect:
   `F5`/`Ctrl+R` reload, `Alt+←`/`Alt+→` history, `Ctrl+L` address bar.
+- **Page zoom on Tabby's zoom hotkeys** — with a page focused,
+  `Ctrl+=`/`Ctrl+-`/`Ctrl+0` zoom the page contents (×1.25 per step,
+  persisted per site) instead of Tabby's UI, just like terminal font-size
+  hotkeys behave for terminals. Ctrl+wheel works natively too.
 - **Session recovery** — open viewer panes are restored on restart like
   terminals, each with its URL and its login state.
 - `target="_blank"` / `window.open` links open as new viewer tabs.

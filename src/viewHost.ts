@@ -242,6 +242,22 @@ export class ViewerView {
         this.webContents.focus()
     }
 
+    /**
+     * Page-level zoom (contents only — overlay bounds are unaffected).
+     * direction > 0 zoom in, < 0 zoom out, 0 reset; factor clamped to
+     * Chromium's sane range. The factor persists per-origin in the pane's
+     * persistent session.
+     */
+    zoomPage (direction: number): void {
+        if (direction === 0) {
+            this.webContents.setZoomFactor(1)
+            return
+        }
+        const f = this.webContents.getZoomFactor()
+        const next = direction > 0 ? f * 1.25 : f / 1.25
+        this.webContents.setZoomFactor(Math.min(5, Math.max(0.25, next)))
+    }
+
     toggleDevTools (): void {
         if (this.webContents.isDevToolsOpened()) {
             this.webContents.closeDevTools()

@@ -233,6 +233,27 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
                 this.view!.forward()
                 return
             }
+            // Redirect Tabby's zoom hotkeys (terminal font size) to PAGE zoom
+            // while the page has focus — consumed here so Tabby's UI does not
+            // zoom instead. Covers Ctrl(±Shift) with =/+/-/0 and numpad keys.
+            if (input.control && !input.alt && !input.meta) {
+                const code = input.code || ''
+                if (key === '=' || key === '+' || code === 'Equal' || code === 'NumpadAdd') {
+                    event.preventDefault()
+                    this.view!.zoomPage(1)
+                    return
+                }
+                if (key === '-' || code === 'Minus' || code === 'NumpadSubtract') {
+                    event.preventDefault()
+                    this.view!.zoomPage(-1)
+                    return
+                }
+                if (key === '0' || code === 'Digit0' || code === 'Numpad0') {
+                    event.preventDefault()
+                    this.view!.zoomPage(0)
+                    return
+                }
+            }
             if (input.control && !input.shift && key === 'l') {
                 event.preventDefault()
                 this.zone.run(() => this.focusAddressBar())
