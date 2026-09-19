@@ -282,14 +282,20 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
         // (keys pressed together) from sequential presses by timestamp, and
         // expires stale modifiers by age. The tiny increment keeps events
         // unique (dedupe by timeStamp) without distorting the clock.
+        const eventName = input.type === 'keyDown' ? 'keydown' : 'keyup'
         const synth = {
             timeStamp: performance.now() + (++WebViewerTabComponent.syntheticTs) * 1e-4,
             ctrlKey: !!input.control, altKey: !!input.alt,
             shiftKey: !!input.shift, metaKey: !!input.meta,
-            key: input.key, code: input.code, type: input.type,
+            key: input.key, code: input.code,
+            // DOM-canonical lowercase, matching eventName — third-party hotkey
+            // plugins (e.g. tabby-hotkey-guard) relabel any event whose `type`
+            // disagrees, and Electron's 'keyDown'/'keyUp' casing would get the
+            // event re-pushed under a type the engine never matches
+            type: eventName,
             repeat: !!input.isAutoRepeat,
         } as unknown as KeyboardEvent
-        this.hotkeys.pushKeyEvent(input.type === 'keyDown' ? 'keydown' : 'keyup', synth)
+        this.hotkeys.pushKeyEvent(eventName, synth)
         if (input.type === 'keyDown' && this.hotkeys.matchActiveHotkey(true) !== null) {
             event.preventDefault()
         }
