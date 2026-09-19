@@ -68,8 +68,6 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
         this.icon = this.profile.icon || 'fas fa-globe'
 
         this.subscribeUntilDestroyed(this.visibility$, v => this.onViewVisibility(v))
-        // TEMPORARY hotkey debugging — remove once verified stable
-        this.subscribeUntilDestroyed(this.hotkeys.hotkey$, id => console.log('[webviewer-debug] HOTKEY FIRED:', id))
         // NOTE: no focused$/blurred$ subscriptions — programmatically taking
         // and handing back keyboard focus between webContents created event
         // feedback loops (focus storm). Focus interactions are limited to
@@ -127,12 +125,6 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
             this.content.nativeElement as HTMLElement,
             occluded => this.setDock('occlusion', occluded),
         )
-        // TEMPORARY: trace whoever focuses the address bar (stack tells the culprit)
-        const addrEl = this.addressBarInput?.nativeElement as HTMLInputElement | undefined
-        addrEl?.addEventListener('focus', () => {
-            console.log('[webviewer-debug] ADDRESS BAR FOCUSED for', this.profile.options.url,
-                '\n' + new Error('trace').stack?.split('\n').slice(1, 6).join('\n'))
-        })
         if (this.lastVisible) {
             this.view.setVisible(true)
             this.occlusion.start()
@@ -261,12 +253,8 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
             key: input.key, code: input.code, type: input.type,
             repeat: !!input.isAutoRepeat,
         } as unknown as KeyboardEvent
-        console.log('[webviewer-debug] fwd', input.type, JSON.stringify(input.key),
-            'ctrl=' + input.control, 'shift=' + input.shift, 'alt=' + input.alt, 'meta=' + input.meta)
         this.hotkeys.pushKeyEvent(input.type === 'keyDown' ? 'keydown' : 'keyup', synth)
-        const matched = this.hotkeys.matchActiveHotkey(true)
-        console.log('[webviewer-debug] partial match:', matched)
-        if (input.type === 'keyDown' && matched !== null) {
+        if (input.type === 'keyDown' && this.hotkeys.matchActiveHotkey(true) !== null) {
             event.preventDefault()
         }
     }
