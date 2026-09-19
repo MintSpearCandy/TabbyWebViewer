@@ -21,10 +21,10 @@ export class WebViewerProfileProvider extends QuickConnectProfileProvider<WebVie
 
     async getBuiltinProfiles (): Promise<PartialProfile<WebViewerProfile>[]> {
         return [
-            // Directly launchable from the Profiles panel (isTemplate is
-            // filtered out of the panel list by Tabby's UI — see
-            // ProfilesService group filtering; local shells expose themselves
-            // the same way). Opens a pane with an empty address bar.
+            // Single directly-launchable builtin entry. Saved profiles with
+            // a URL are created via Tabby's own "Save tab as profile"
+            // (tab context menu) — a separate template entry would show up
+            // in the panel as a duplicate connection type
             {
                 id: 'webviewer',
                 type: WEBVIEWER_PROFILE_TYPE,
@@ -36,16 +36,6 @@ export class WebViewerProfileProvider extends QuickConnectProfileProvider<WebVie
                     partitionId: null,
                     ignoreCertErrors: false,
                 },
-            } as PartialProfile<WebViewerProfile>,
-            // Template for creating saved profiles (Settings → Profiles &
-            // connections → new profile), with URL / cert options editable
-            {
-                id: 'webviewer:new',
-                type: WEBVIEWER_PROFILE_TYPE,
-                name: 'Web viewer',
-                icon: 'fas fa-globe',
-                isBuiltin: true,
-                isTemplate: true,
             } as PartialProfile<WebViewerProfile>,
         ]
     }
