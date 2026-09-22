@@ -18,18 +18,29 @@
             spellcheck='false')
         button.btn.btn-sm.btn-link((click)='toggleDevTools()', title='Developer tools (F12)')
             i.fas.fa-code
+        button.btn.btn-sm.btn-link((click)='toggleRecording()',
+            [class.recording-active]='recorder?.state === "recording"',
+            title='Session recorder (console · network · events)')
+            i.fas.fa-circle-dot
         button.btn.btn-sm.btn-link((click)='clearBrowsingData()',
             title="Clear this pane's browsing data (cookies, storage, cache)")
             i.fas.fa-eraser
         button.btn.btn-sm.btn-link((click)='openInSystemBrowser()', title='Open in system browser')
             i.fas.fa-arrow-up-right-from-square
-    .webviewer-content(#content)
-        .webviewer-empty(*ngIf='!hasUrl && !loadError')
-            i.fas.fa-globe
-            p Enter a URL in the address bar above
-        .webviewer-error(*ngIf='loadError')
-            h5 {{loadError.description || 'Failed to load page'}}
-            p.text-muted {{loadError.url}} — error {{loadError.code}}
-            .webviewer-error-actions
-                button.btn.btn-primary((click)='reload()') Reload
-                button.btn.btn-secondary((click)='openInSystemBrowser()') Open in system browser
+    .webviewer-body([class.wv-right]='bodyHasRightDrawer')
+        webviewer-recorder-panel(
+            *ngIf='recorder && recorderDrawerOpen',
+            [recorder]='recorder',
+            [placement]='panelPlacement',
+            (closed)='onRecorderPanelClosed()',
+            (resizeGesture)='onDrawerResizeGesture($event)')
+        .webviewer-content(#content)
+            .webviewer-empty(*ngIf='!hasUrl && !loadError')
+                i.fas.fa-globe
+                p Enter a URL in the address bar above
+            .webviewer-error(*ngIf='loadError')
+                h5 {{loadError.description || 'Failed to load page'}}
+                p.text-muted {{loadError.url}} — error {{loadError.code}}
+                .webviewer-error-actions
+                    button.btn.btn-primary((click)='reload()') Reload
+                    button.btn.btn-secondary((click)='openInSystemBrowser()') Open in system browser

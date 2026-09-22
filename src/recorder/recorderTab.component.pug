@@ -1,0 +1,5 @@
+.webviewer-recorder-tab
+    webviewer-recorder-panel(*ngIf='recorder', [recorder]='recorder', [placement]='"full"')
+    .recorder-tab-empty(*ngIf='!recorder')
+        i.fas.fa-circle-dot
+        p The recorded pane has closed — its session data was released with it.

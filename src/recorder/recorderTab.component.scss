@@ -1,0 +1,28 @@
+:host {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.webviewer-recorder-tab {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+}
+
+.recorder-tab-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    opacity: 0.55;
+    padding: 24px;
+    text-align: center;
+}
+
+.recorder-tab-empty i {
+    font-size: 28px;
+}

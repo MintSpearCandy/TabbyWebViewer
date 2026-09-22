@@ -7,6 +7,8 @@ import { SettingsTabProvider } from 'tabby-settings'
 import { WebViewerConfigProvider } from './config'
 import { WebViewerProfileProvider } from './profileProvider'
 import { WebViewerProfileSettingsComponent } from './profileSettings.component'
+import { RecorderPanelComponent } from './recorder/recorderPanel.component'
+import { RecorderTabComponent } from './recorder/recorderTab.component'
 import { WebViewerTabRecoveryProvider } from './recovery'
 import { WebViewerSettingsTabProvider } from './settings'
 import { WebViewerSettingsTabComponent } from './settingsTab.component'
@@ -30,11 +32,14 @@ import { WebViewerTabContextMenuProvider } from './tabContextMenu'
         WebViewerTabComponent,
         WebViewerProfileSettingsComponent,
         WebViewerSettingsTabComponent,
+        RecorderPanelComponent,
+        RecorderTabComponent,
     ],
     entryComponents: [
         WebViewerTabComponent,
         WebViewerProfileSettingsComponent,
         WebViewerSettingsTabComponent,
+        RecorderTabComponent,
     ],
 })
 export default class WebViewerModule { }

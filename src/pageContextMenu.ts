@@ -44,13 +44,15 @@ export function popupPageContextMenu (view: ViewerView, params: any, h: PageMenu
         { type: 'separator' },
         { label: 'Inspect element', click: () => webContents.inspectElement(params.x, params.y) },
     )
-    const win = currentWindow()
-    const content = win.getContentBounds()
+    // CALIBRATED: Menu.popup x/y are WINDOW-RELATIVE DIPs (not screen
+    // coordinates) — view offset within the window + page CSS px × the page's
+    // zoom factor. Do NOT add the window origin.
     const viewBounds = view.getBounds()
+    const pageZoom = webContents.getZoomFactor()
     buildMenu(template).popup({
-        window: win,
-        x: Math.round(content.x + viewBounds.x + params.x),
-        y: Math.round(content.y + viewBounds.y + params.y),
+        window: currentWindow(),
+        x: Math.round(viewBounds.x + params.x * pageZoom),
+        y: Math.round(viewBounds.y + params.y * pageZoom),
     })
 }
 

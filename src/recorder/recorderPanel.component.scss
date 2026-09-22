@@ -1,0 +1,547 @@
+// In-flow drawer — NEVER position: absolute over the content (the occlusion
+// watcher must not see it, and the native view's bounds loop sizes against
+// the shrunken content). Backgrounds stay translucent so any Tabby theme
+// shows through.
+:host {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    border-top: 1px solid rgba(128, 128, 128, 0.35);
+}
+
+// Right drawer: hangs on the content's right edge, so its separator is a
+// LEFT border; it stretches to the body row's full height automatically
+:host(.wv-pl-right) {
+    border-top: none;
+    border-left: 1px solid rgba(128, 128, 128, 0.35);
+}
+
+// Detached-tab layout: fill the whole tab, no separators of its own
+:host(.wv-pl-full) {
+    flex: 1 1 auto;
+    border-top: none;
+}
+
+.webviewer-recorder {
+    display: flex;
+    flex-direction: column;
+    // Container (the host) always carries a definite size in bottom/right
+    // (and a definite tab area in full), so basis-0 grow fills it exactly
+    flex: 1 1 0;
+    min-height: 0;
+    min-width: 0;
+}
+
+// Right placement: resize strip moves to the LEFT edge (pane-facing edge)
+.webviewer-recorder.pl-right {
+    flex-direction: row;
+}
+
+.recorder-resize {
+    flex: 0 0 auto;
+    height: 5px;
+    cursor: ns-resize;
+}
+
+.pl-right .recorder-resize {
+    width: 5px;
+    height: auto;
+    align-self: stretch;
+    cursor: ew-resize;
+}
+
+.recorder-main {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+// ------------------------------------------------------------- header ---
+// ONE fixed-height row, never wrapped: tabs, per-tab tools and actions all
+// sit on the same stable baseline regardless of which tab is active (the
+// network-only tools block appears/disappears IN the row, changing nothing
+// else). The header's bottom border is the 暗线 separating the strip from
+// the recorded content; the active tab's foot sinks THROUGH it (square
+// corners + -1px margin + same-color shadow) so only its LOWER FACE changes
+// when a tab is selected — the top edge never moves.
+.recorder-header {
+    display: flex;
+    align-items: stretch;
+    // Wide drawer: ONE stable 30px row. Narrow drawer: the tab strip never
+    // squeezes or truncates — the tools/actions block WRAPS onto a second
+    // line instead (row count is a pure function of width, never of which
+    // tab is active beyond the tools block itself being network-only).
+    flex-wrap: wrap;
+    column-gap: 6px;
+    row-gap: 0;
+    padding: 0 6px;
+    min-height: 30px;                // one-line height; two lines grow below
+    flex: 0 0 auto;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.4);
+}
+
+// Tabs hug the left edge on the FIRST line and never shrink — crowding is
+// resolved by wrapping the toolbar, not by folding the tabs.
+.recorder-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    flex: 0 0 auto;
+}
+
+// Every tab is the SAME BOX in every state (identical margins/padding); the
+// active state differs ONLY in its lower face: square bottom corners, the
+// foot sinking 1px through the divider, and a darker base. (On a wrapped
+// two-line header the tabs sit on the first line, so the fused foot only
+// reads as the square-cornered darker tab — accepted for narrow drawers.)
+.recorder-tab {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(128, 128, 128, 0.14);
+    border: 1px solid rgba(128, 128, 128, 0.16);
+    border-radius: 6px;
+    padding: 0 10px;
+    margin: 3px 0;
+    white-space: nowrap;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.4;
+    color: #fff;                 // UI 风格白色标签
+    cursor: pointer;
+}
+
+.recorder-tab i {
+    font-size: 11px;
+    opacity: 0.75;
+}
+
+.r-tab-count {
+    color: rgba(255, 255, 255, 0.45);   // 数量用淡色渲染
+    font-size: 11px;
+}
+
+.recorder-tab:hover {
+    background: rgba(128, 128, 128, 0.20);
+}
+
+.recorder-tab.active {
+    background: rgba(128, 128, 128, 0.26);
+    border-color: rgba(128, 128, 128, 0.20);
+    border-bottom-color: transparent;
+    border-radius: 6px 6px 0 0;              // square foot
+    margin-bottom: -1px;                     // sink through the divider (top edge unchanged)
+    box-shadow: 0 1px 0 0 rgba(128, 128, 128, 0.26);  // same color as bg: smooth fusion with the line
+}
+
+// Per-tab tools (network only): on the same line when it fits, wrapping to
+// their own line below the tabs when the drawer is too narrow — the filter
+// keeps a sane floor so it never crushes into the tabs.
+.recorder-tools {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 auto;
+    min-width: 230px;
+    justify-content: flex-end;
+}
+
+.recorder-statics {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0 4px;
+    font-size: 11px;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.recorder-filter {
+    max-width: 360px;
+    min-width: 100px;
+    font-size: 11px;
+}
+
+// actions always hug the right edge, with or without the tools block; the
+// tabs' shrinkability guarantees free space for the auto margin at any width
+.recorder-actions {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
+.recorder-banner {
+    flex: 0 0 auto;
+    padding: 2px 8px;
+    font-size: 11px;
+    background: rgba(200, 140, 40, 0.16);
+    color: #d8a24a;
+}
+
+.recorder-error {
+    flex: 0 0 auto;
+    padding: 2px 8px;
+    font-size: 11px;
+    background: rgba(220, 80, 80, 0.12);
+    color: #e07070;
+}
+
+.recorder-banner i,
+.recorder-error i {
+    margin-right: 6px;
+}
+
+.recorder-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+}
+
+.recorder-scroll {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    font-family: var(--monospace-font, monospace);
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.recorder-note {
+    opacity: 0.5;
+    padding: 2px 8px;
+    font-style: italic;
+}
+
+// ------------------------------------------------------------ console ---
+// Rows carry mouse multi-selection (ctrl+click / sweep / shift+click) —
+// native text selection is off on the row itself, but stays available
+// INSIDE the expanded detail block.
+.console-row,
+.event-row,
+.net-row {
+    user-select: none;
+}
+
+// ------------------------------------------------------------ rows ---
+// A row NEVER folds when the drawer is narrow: the summary columns stay on
+// one line (row-summary, nowrap) and the LIST scrolls horizontally instead.
+// The row keeps min-width: max-content so it sizes to the summary line —
+// the detail block contributes ZERO intrinsic width (width:0 below) or a
+// long expanded body would blow the row to the full-text width.
+.console-row,
+.net-row,
+.event-row {
+    display: flex;
+    flex-wrap: wrap;             // only the detail block wraps onto its own line
+    min-width: max-content;
+    padding: 0 8px;
+    cursor: pointer;
+}
+
+.row-summary {
+    display: flex;
+    align-items: baseline;
+    white-space: nowrap;
+    flex: 0 0 auto;              // never shrinks — overflowing scrolls
+}
+
+.console-row {
+    gap: 0 6px;
+    align-items: baseline;
+}
+
+.console-row .row-summary {
+    gap: 0 6px;
+}
+
+.console-row:hover,
+.event-row:hover {
+    background: rgba(128, 128, 128, 0.10);
+}
+
+.console-row.expanded,
+.event-row.expanded {
+    background: rgba(96, 160, 255, 0.10);
+}
+
+.console-row.selected,
+.event-row.selected,
+.net-row.selected {
+    background: rgba(96, 160, 255, 0.18);
+    box-shadow: inset 2px 0 0 rgba(96, 160, 255, 0.8);
+}
+
+.row-detail {
+    user-select: text;           // detail text stays manually selectable
+}
+
+// Inline expand caret at the row's end (DevTools-style drop-down detail) —
+// lives INSIDE the summary so it scrolls with the columns
+.r-caret {
+    margin-left: 8px;
+    opacity: 0.4;
+    font-size: 10px;
+    flex: 0 0 auto;
+}
+
+.row-detail {
+    // width:0 keeps the detail's intrinsic contribution to the row's
+    // max-content at zero (percentages resolve to auto/0 during intrinsic
+    // sizing); min-width:100% then renders it at the full row width
+    width: 0;
+    min-width: 100%;
+    box-sizing: border-box;
+    margin: 2px 0 4px 52px;
+    padding: 4px 8px;
+    border-left: 2px solid rgba(96, 160, 255, 0.5);
+    background: rgba(128, 128, 128, 0.08);
+    overflow: auto;
+}
+
+.row-detail-meta {
+    opacity: 0.5;
+    margin-bottom: 2px;
+}
+
+.row-detail-kv {
+    word-break: break-all;
+    white-space: pre-wrap;
+}
+
+.row-detail-text {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 240px;
+    overflow: auto;
+}
+
+.lvl-error .r-text {
+    color: #e06c75;
+}
+
+.lvl-warn .r-text {
+    color: #d8a24a;
+}
+
+.r-t {
+    min-width: 46px;
+    text-align: right;
+    opacity: 0.45;
+    flex: 0 0 auto;
+}
+
+.r-lvl {
+    min-width: 36px;
+    opacity: 0.55;
+    flex: 0 0 auto;
+}
+
+.r-flag {
+    flex: 0 0 auto;
+    color: #e06c75;
+    font-size: 9px;
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    padding: 0 3px;
+}
+
+// Console text keeps its embedded line breaks (pre) but never WRAPS —
+// long messages scroll with the list instead of folding
+.r-text {
+    flex: 0 0 auto;
+    white-space: pre;
+}
+
+// ------------------------------------------------------------- network ---
+// Full-width rows; details expand INLINE as a multi-level collapsible list
+// (DevTools-style): each section header toggles its own body, and section
+// bodies render ONLY while open (*ngIf — no hidden DOM).
+.net-row {
+    gap: 0 8px;
+    align-items: baseline;
+}
+
+.net-row .row-summary {
+    gap: 0 8px;
+}
+
+.net-row:hover {
+    background: rgba(128, 128, 128, 0.12);
+}
+
+.nd-section {
+    margin-bottom: 2px;
+}
+
+.nd-section-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    opacity: 0.85;
+    padding: 1px 0;
+
+    i {
+        font-size: 10px;
+        opacity: 0.6;
+    }
+
+    &:hover {
+        opacity: 1;
+    }
+}
+
+.nd-section-body {
+    margin-left: 16px;
+    padding-left: 8px;
+    border-left: 1px solid rgba(128, 128, 128, 0.25);
+}
+
+.nd-kv {
+    word-break: break-all;
+    white-space: pre-wrap;
+
+    .nd-kv-key {
+        opacity: 0.6;
+    }
+}
+
+.net-method {
+    min-width: 46px;
+    font-weight: 600;
+    flex: 0 0 auto;
+}
+
+.m-get { color: #7fb46a; }
+.m-post { color: #d8a24a; }
+.m-put { color: #b48ead; }
+.m-patch { color: #56b6c2; }
+.m-delete { color: #e06c75; }
+
+.net-status {
+    min-width: 30px;
+    text-align: right;
+    flex: 0 0 auto;
+}
+
+.st-ok { color: #7fb46a; }
+.st-redir { color: #56b6c2; }
+.st-err { color: #e06c75; }
+.st-pending { opacity: 0.45; }
+
+// URL never truncates — the summary line scrolls as a whole
+.net-url {
+    flex: 0 0 auto;
+}
+
+.net-type {
+    min-width: 58px;
+    text-align: right;
+    opacity: 0.5;
+    flex: 0 0 auto;
+}
+
+.net-size {
+    min-width: 54px;
+    text-align: right;
+    opacity: 0.7;
+    flex: 0 0 auto;
+}
+
+.net-dur {
+    min-width: 52px;
+    text-align: right;
+    opacity: 0.5;
+    flex: 0 0 auto;
+}
+
+// -------------------------------------------------------------- events ---
+.event-row {
+    gap: 0 8px;
+    align-items: baseline;
+}
+
+.event-row .row-summary {
+    gap: 0 8px;
+}
+
+.r-kind {
+    flex: 0 0 auto;
+    opacity: 0.8;
+    font-size: 10px;
+}
+
+.r-kind-label {
+    min-width: 48px;
+    opacity: 0.55;
+    flex: 0 0 auto;
+}
+
+// selector/value/snippet never truncate — the summary line scrolls as a whole
+.r-selector {
+    flex: 0 0 auto;
+}
+
+.r-value {
+    color: #7fb46a;
+    flex: 0 0 auto;
+}
+
+.r-snippet {
+    flex: 0 0 auto;
+    opacity: 0.7;
+}
+
+.r-frame {
+    flex: 0 0 auto;
+    opacity: 0.5;
+}
+
+// ------------------------------------------------------ DOM context menu ---
+// position:fixed at the right-click's viewport CSS coordinates — the BROWSER
+// aligns it to the click, so no DPI / zoom / multi-monitor math exists. It
+// opens down-right while the native page view always sits up/left of the
+// panel, so the view can never cover it.
+.wv-ctx-menu {
+    position: fixed;
+    z-index: 10000;
+    min-width: 170px;
+    padding: 4px 0;
+    background: rgba(32, 32, 32, 0.97);
+    border: 1px solid rgba(128, 128, 128, 0.4);
+    border-radius: 5px;
+    box-shadow: 0 5px 16px rgba(0, 0, 0, 0.5);
+    font-size: 12px;
+}
+
+.wv-ctx-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 14px;
+    color: #eee;
+    cursor: pointer;
+    white-space: nowrap;
+
+    i {
+        width: 14px;
+        text-align: center;
+        opacity: 0.7;
+        font-size: 11px;
+    }
+
+    &:hover {
+        background: rgba(96, 160, 255, 0.25);
+    }
+}

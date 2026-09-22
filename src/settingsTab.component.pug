@@ -13,6 +13,21 @@ h3 Web Viewer
 
 .form-line
     .header
+        .title Session recorder layout
+        .description
+            | Where the recorder panel appears. Bottom ↔ right switch live for an
+            | open panel; the detached tab applies the next time you start recording.
+            | Re-click the record button to bring a hidden panel back.
+    select.form-control(
+        style='max-width: 260px',
+        [(ngModel)]='recorderLayout',
+        (ngModelChange)='save()')
+        option(value='right') Right drawer (in pane, default)
+        option(value='bottom') Bottom drawer (in pane)
+        option(value='tab') Detached tab (split-friendly)
+
+.form-line
+    .header
         .title Browsing data
         .description
             | Each pane keeps its own isolated, persistent cookie jar on disk.

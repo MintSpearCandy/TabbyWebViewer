@@ -7,10 +7,14 @@
 import {
     AfterViewInit, ChangeDetectorRef, Component, ElementRef, Injector, Input, NgZone, OnDestroy, OnInit, ViewChild,
 } from '@angular/core'
-import { AppService, BaseTabComponent, HotkeysService, RecoveryToken, SplitTabComponent } from 'tabby-core'
+import { AppService, BaseTabComponent, ConfigService, HotkeysService, RecoveryToken, SplitTabComponent } from 'tabby-core'
 import { hostnameOf, makeWebViewerProfile, newPartitionId, normalizeUrl, partitionName, WebViewerProfile } from './api'
 import { ensureClientCertificateSupport } from './clientCerts'
 import { currentWebContents, currentWindow, focusedWebContentsId } from './electronApi'
+import { SessionRecorder } from './recorder/recorder'
+import { RecorderPanelComponent } from './recorder/recorderPanel.component'
+import { RecorderTabComponent } from './recorder/recorderTab.component'
+import { getRecorderRegistration, registerRecorder, unregisterRecorder } from './recorder/recorderRegistry'
 import { LoadErrorInfo, OcclusionWatcher, ViewerView } from './viewHost'
 import { popupPageContextMenu } from './pageContextMenu'
 import { openInSystemBrowser } from './dataManagement'
@@ -49,6 +53,9 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
     @Input() autoFocusAddressBar = true
     @ViewChild('content') content: ElementRef
     @ViewChild('addressBarInput') addressBarInput: ElementRef
+    /** In-pane recorder drawer (present only while open) — the view-focus
+     *  hook below dismisses its multi-selection via this handle. */
+    @ViewChild(RecorderPanelComponent) recorderPanel: RecorderPanelComponent
 
     addressBar = ''
     canGoBack = false
@@ -58,6 +65,10 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
     hasUrl: boolean
 
     view: ViewerView | null = null
+
+    /** Per-pane session recorder — created lazily on the first record click. */
+    recorder: SessionRecorder | null = null
+    recorderDrawerOpen = false
 
     private partitionId: string
     private lastVisible = false
@@ -72,6 +83,7 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
     constructor (
         injector: Injector,
         private app: AppService,
+        private configSvc: ConfigService,
         private hotkeys: HotkeysService,
         private zone: NgZone,
         private cdr: ChangeDetectorRef,
@@ -148,6 +160,12 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
                 onContextMenu: params => this.zone.run(() => this.onPageContextMenu(params)),
                 onWindowOpen: url => this.zone.run(() => this.openUrlInNewTab(url)),
                 onFocusGained: () => this.zone.run(() => this.anchorPaneFocus()),
+                // NOTE: never dismiss the drawer selection here! This hook
+                // fires for PROGRAMMATIC view.focus() too — e.g. the pane's
+                // own claimKeyboardFocus() runs it whenever the user clicks
+                // in the drawer (main DOM gains focus → split re-emits pane
+                // focus), which wiped the selection the user just made.
+                // Dismissal lives in onPageInteract (page click) instead.
                 onBeforeInput: (event, input) => this.handleBeforeInput(event, input),
             },
         )
@@ -184,6 +202,7 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
         this.hasUrl = true
         this.setDock('state', false)
         this.updateNavState()
+        this.recorder?.addNavigation(url)
         this.recoveryStateChangedHint.next()  // persist the recovery token soon
         this.cdr.detectChanges()
     }
@@ -209,6 +228,11 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
         } else {
             this.occlusion?.stop()
             this.setDock('gesture', false)
+            // The tab was switched away (keyboard or click on another tab
+            // header — the pane may never see a mousedown or a view-focus
+            // event for it): the drawer's multi-selection has lost "mouse
+            // focus" and must not survive into the next visit
+            this.recorderPanel?.clearSelection()
         }
     }
 
@@ -255,6 +279,12 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
         if (focused === this) {
             this.claimKeyboardFocus()
         }
+        // NOTE: no selection dismissal in the else branch — the split
+        // re-emits pane focus on every main-DOM focus change (clicking in
+        // the drawer included), which would wipe the user's fresh selection
+        // mid-gesture. Clicks into OTHER panes' pages dismiss their own
+        // panels via onPageInteract; a stale selection here is cleared by
+        // the next plain click / click-away.
     }
 
     /**
@@ -433,6 +463,122 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
         this.anchorPaneFocus()
     }
 
+    /** Toolbar record button: creates the recorder + its UI, re-summons a hidden one, or toggles recording. */
+    toggleRecording (): void {
+        if (!this.view) {
+            return
+        }
+        const layout = this.recorderLayout()
+        if (!this.recorder) {
+            const wcId = this.view.webContentsId
+            this.zone.runOutsideAngular(() => {
+                // Everything recorder-side runs outside the zone: CDP events
+                // and the flush timer must not trigger app-wide change
+                // detection (panels call their own detectChanges)
+                const rec = new SessionRecorder(this.view!.webContents)
+                rec.on({
+                    onStateChange: () => this.zone.run(() => this.cdr.detectChanges()),
+                })
+                registerRecorder(wcId, rec, hostnameOf(this.view!.currentUrl() || this.profile.options.url || 'pane'))
+                const reg = getRecorderRegistration(wcId)
+                if (reg) {
+                    reg.onTabClosed = () => this.onRecorderTabClosed()
+                }
+                rec.start()
+                this.zone.run(() => {
+                    this.recorder = rec
+                    if (layout === 'tab') {
+                        this.openRecorderTab()
+                    } else {
+                        this.recorderDrawerOpen = true
+                    }
+                    this.cdr.detectChanges()
+                })
+            })
+            return
+        }
+        // Hidden-but-recording UI: the first click brings it BACK — stopping a
+        // recording you cannot see (and losing events) would be a footgun
+        if (layout === 'tab') {
+            const reg = getRecorderRegistration(this.view.webContentsId)
+            if (reg && !reg.tab) {
+                this.openRecorderTab()
+                return
+            }
+        } else if (!this.recorderDrawerOpen) {
+            this.recorderDrawerOpen = true
+            this.cdr.detectChanges()
+            return
+        }
+        if (this.recorder.state === 'recording') {
+            this.recorder.stop()
+        } else {
+            this.recorder.start()
+        }
+        this.cdr.detectChanges()
+    }
+
+    /** Configured recorder UI form (Settings → Web Viewer → Session recorder layout). */
+    private recorderLayout (): 'bottom' | 'right' | 'tab' {
+        const v = (this.configSvc.store.webviewer as { recorderLayout?: string } | undefined)?.recorderLayout
+        return v === 'right' || v === 'tab' ? v : 'bottom'
+    }
+
+    /** Panel placement for the in-pane drawer forms. */
+    get panelPlacement (): 'bottom' | 'right' {
+        return this.recorderLayout() === 'right' ? 'right' : 'bottom'
+    }
+
+    /** Whether the pane body lays the drawer out beside (not below) the page. */
+    get bodyHasRightDrawer (): boolean {
+        return this.recorderDrawerOpen && !!this.recorder && this.recorderLayout() === 'right'
+    }
+
+    private openRecorderTab (): void {
+        const id = this.view!.webContentsId
+        const reg = getRecorderRegistration(id)
+        if (reg?.tab) {
+            reg.tab.focusSelf()
+            return
+        }
+        this.app.openNewTab({ type: RecorderTabComponent, inputs: { targetId: id } })
+    }
+
+    /** Drawer closed: keep the recorder only while it is actually recording. */
+    onRecorderPanelClosed (): void {
+        this.recorderDrawerOpen = false
+        if (this.recorder && this.recorder.state !== 'recording') {
+            this.disposeRecorder()
+        }
+        this.cdr.detectChanges()
+    }
+
+    /**
+     * Drawer resize drag in flight: park the native view (same gesture dock
+     * as pane drags) — the handle drags toward the page, and once the pointer
+     * crosses onto the view the OS routes the remaining mouse events into the
+     * page's webContents, stalling the drag.
+     */
+    onDrawerResizeGesture (on: boolean): void {
+        this.setDock('gesture', on && this.lastVisible)
+    }
+
+    /** Detached recorder tab closed: same keep-while-recording rule as the drawer. */
+    private onRecorderTabClosed (): void {
+        if (this.recorder && this.recorder.state !== 'recording' && !this.recorderDrawerOpen) {
+            this.disposeRecorder()
+            this.cdr.detectChanges()
+        }
+    }
+
+    private disposeRecorder (): void {
+        if (this.view && this.recorder) {
+            unregisterRecorder(this.view.webContentsId)
+        }
+        this.recorder?.dispose()
+        this.recorder = null
+    }
+
     onAddressEnter (): void {
         const url = normalizeUrl(this.addressBar)
         if (url) {
@@ -563,6 +709,8 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
         this.paneFocusParent = null
         this.occlusion?.destroy()
         this.occlusion = null
+        // Release the CDP session BEFORE the webContents goes away
+        this.disposeRecorder()
         this.view?.destroy()
         this.view = null
         super.ngOnDestroy()

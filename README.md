@@ -42,6 +42,30 @@ terminals — for dashboards, admin panels, docs, anything your servers serve.
   `Ctrl+=`/`Ctrl+-`/`Ctrl+0` zoom the page contents (×1.25 per step,
   persisted per site) instead of Tabby's UI, just like terminal font-size
   hotkeys behave for terminals. Ctrl+wheel works natively too.
+- **Session recorder** — a toolbar button (⏺) opens a per-pane panel with
+  Console / Network / Events tabs. It captures all console output plus
+  uncaught exceptions, every request/response (headers, POST and — for
+  textual responses ≤64KB — response bodies, with redirects split into
+  chained entries), and core interactions: clicks (CSS selector + text +
+  coordinates), input/change values (password fields are always masked),
+  form submits and navigations. Network streams can be filtered with a
+  DevTools-style expression (see below); the whole session exports to JSON.
+  Recording and `F12` coordinate automatically: opening DevTools pauses the
+  recorder, closing it resumes — data is preserved.
+- **Recorder layouts** — Settings → Web Viewer → *Session recorder layout*:
+  right drawer (default, drag its left edge), bottom drawer (page on top,
+  drawer under it — drag its top edge), or a **detached tab**
+  (`Recorder — <host>`) you can split beside its pane like DevTools' detach
+  mode. Drawers keep a FIXED size you drag to (enforced three ways, so
+  content can never grow them; remembered across opens) and always leave
+  the page a minimum area. Hiding the panel never stops the recording —
+  clicking the record button brings it back. Every list is a lazy
+  collapsible tree: rows expand inline (Network into per-section groups —
+  General / headers / bodies — that render only while open; clicks inside
+  the open detail never collapse it). Rows support file-manager-style
+  multi-selection — Ctrl+click, a held left-button sweep, or Shift+click —
+  then right-click → 复制 or Ctrl+C: collapsed rows copy their one-line
+  summary, expanded rows copy their full detail, joined by newlines.
 - **Session recovery** — open viewer panes are restored on restart like
   terminals, each with its URL and its login state.
 - `target="_blank"` / `window.open` links open as new viewer tabs.
@@ -89,6 +113,38 @@ Then fully exit Tabby (including the tray icon) and start it again.
 - In a pane: address bar navigates on Enter (bare localhost/IP hosts default
   to `http://`, other hosts to `https://` — configurable in Settings →
   Web Viewer).
+
+### Session recorder
+
+Click the ⏺ toolbar button — the drawer opens and recording starts; click
+again to stop. The drawer (draggable top edge) has three tabs:
+
+- **Console** — all levels + uncaught exceptions (marked `UNCAUGHT`).
+- **Network** — click a row for headers / bodies / timing. The filter box
+  accepts space-separated terms, ANDed together; a leading `-` negates one
+  term:
+
+  | Term | Meaning |
+  |---|---|
+  | `api` | URL contains "api" (case-insensitive) |
+  | `/\.js$/i` | URL matches a regex (both slashes; only flag `i`) |
+  | `method:POST` | exact HTTP method |
+  | `status:4xx` / `status:404` / `status:>=400` / `status:<300` | status |
+  | `type:xhr` | resource type (`doc css img js ws` are aliases) |
+  | `domain:cdn` | hostname contains |
+  | `mime:json` | MIME type contains |
+  | `has:body` | response body was captured |
+
+  The **静态资源** checkbox (on by default) hides image / font / stylesheet /
+  script / media requests. A parse error shows a message and leaves the list
+  unfiltered. Filtering is display-only — recording always captures
+  everything.
+
+- **Events** — recorded interactions; passwords never leave the page
+  unmasked (`••`).
+
+WebSocket traffic and cross-site out-of-process iframes are not captured
+(v1).
 
 ## Browsing data & cleanup
 

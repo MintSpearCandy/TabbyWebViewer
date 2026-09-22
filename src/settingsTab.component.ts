@@ -9,12 +9,15 @@ import { clearAllWebViewerData, listWebViewerPartitions } from './dataManagement
 })
 export class WebViewerSettingsTabComponent {
     defaultScheme: string
+    recorderLayout: string
     partitionCount: number
     clearing = false
     clearedMessage: string | null = null
 
     constructor (public config: ConfigService) {
         this.defaultScheme = config.store.webviewer?.defaultScheme ?? 'https'
+        const layout = config.store.webviewer?.recorderLayout
+        this.recorderLayout = ['bottom', 'right', 'tab'].includes(layout) ? layout : 'right'
         this.partitionCount = listWebViewerPartitions().length
     }
 
@@ -22,6 +25,7 @@ export class WebViewerSettingsTabComponent {
         const store = this.config.store
         store.webviewer ??= {}
         store.webviewer.defaultScheme = this.defaultScheme === 'http' ? 'http' : 'https'
+        store.webviewer.recorderLayout = ['bottom', 'right', 'tab'].includes(this.recorderLayout) ? this.recorderLayout : 'right'
         this.config.save()
     }
 

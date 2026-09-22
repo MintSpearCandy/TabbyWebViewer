@@ -1,0 +1,150 @@
+.webviewer-recorder([class.pl-right]='placement === "right"')
+    .recorder-resize(*ngIf='placement !== "full"', (pointerdown)='onResizeStart($event)', title='Drag to resize')
+    .recorder-main
+        .recorder-header
+            .recorder-tabs
+                button.recorder-tab((click)='setTab("console")', [class.active]='activeTab === "console"')
+                    i.fas.fa-terminal
+                    span.r-tab-label Console
+                    span.r-tab-count {{consoleCount}}
+                button.recorder-tab((click)='setTab("network")', [class.active]='activeTab === "network"')
+                    i.fas.fa-network-wired
+                    span.r-tab-label Network
+                    span.r-tab-count {{networkCount}}
+                button.recorder-tab((click)='setTab("events")', [class.active]='activeTab === "events"')
+                    i.fas.fa-hand-pointer
+                    span.r-tab-label Events
+                    span.r-tab-count {{eventCount}}
+            .recorder-tools(*ngIf='activeTab === "network"')
+                label.recorder-statics(title='Hide image / font / stylesheet / script / media requests')
+                    input(type='checkbox', [(ngModel)]='hideStatics', (ngModelChange)='refresh()')
+                    span  静态资源
+                input.form-control.form-control-sm.recorder-filter(
+                    [(ngModel)]='networkFilterExpr',
+                    (ngModelChange)='onFilterChange()',
+                    placeholder='api  -type:image  method:POST  status:4xx  /\\.js$/',
+                    spellcheck='false')
+            .recorder-actions
+                button.btn.btn-sm.btn-link((click)='exportSession()', title='Export session (JSON)')
+                    i.fas.fa-download
+                button.btn.btn-sm.btn-link((click)='clearAll()', title='Clear all streams')
+                    i.fas.fa-trash-can
+                button.btn.btn-sm.btn-link(*ngIf='placement !== "full"', (click)='closed.emit()', title='Hide panel (recording continues)')
+                    i.fas.fa-chevron-down
+        .recorder-banner(*ngIf='recorder.state !== "recording"')
+            i.fas.fa-circle-pause
+            |  {{stateBanner()}}
+        .recorder-error(*ngIf='activeTab === "network" && !filterParsed.ok')
+            i.fas.fa-triangle-exclamation
+            |  {{filterParsed.error}} — 不过滤，显示全部
+        .recorder-body
+            .recorder-scroll(*ngIf='activeTab === "console"')
+                .console-row(*ngFor='let e of consoleRows; trackBy: trackById',
+                    (click)='onRowClick($event, e.id)',
+                    (mousedown)='onRowMouseDown($event, e.id)',
+                    (mouseenter)='onRowEnter(e.id)',
+                    (contextmenu)='onRowContextMenu($event, e.id)',
+                    [class.selected]='selectedIds.has(e.id)',
+                    [class.lvl-error]='e.level === "error"', [class.lvl-warn]='e.level === "warn"',
+                    [class.expanded]='expandedId === e.id')
+                    .row-summary
+                        span.r-t {{fmtT(e.t, consoleRows[0]?.t)}}
+                        span.r-lvl {{e.level.toUpperCase()}}
+                        span.r-flag(*ngIf='e.uncaught', title='Uncaught exception') UNCAUGHT
+                        span.r-text {{e.text}}
+                        i.fas.r-caret([ngClass]='expandedId === e.id ? "fa-caret-down" : "fa-caret-right"')
+                    .row-detail(*ngIf='expandedId === e.id', (click)='$event.stopPropagation()')
+                        div.row-detail-meta entry \#{{e.id}} · {{e.level}} · t={{fmtMs(e.t)}}ms
+                        pre.row-detail-text {{e.text}}
+                .recorder-note(*ngIf='consoleHidden > 0') … {{consoleHidden}} earlier entries hidden — export for full data
+            .recorder-scroll(*ngIf='activeTab === "network"')
+                .net-row(*ngFor='let e of networkRows; trackBy: trackById',
+                    (click)='onRowClick($event, e.id)',
+                    (mousedown)='onRowMouseDown($event, e.id)',
+                    (mouseenter)='onRowEnter(e.id)',
+                    (contextmenu)='onRowContextMenu($event, e.id)',
+                    [class.selected]='selectedIds.has(e.id)',
+                    [class.expanded]='expandedId === e.id')
+                    .row-summary
+                        span.r-t {{fmtT(e.t, networkRows[0]?.t)}}
+                        span.net-method([ngClass]='"m-" + e.method.toLowerCase()') {{e.method}}
+                        span.net-status([ngClass]='netStatusClass(e)') {{statusText(e)}}
+                        span.net-url {{fmtUrl(e)}}
+                        span.net-type {{e.resourceType}}
+                        span.net-size {{fmtSize(e.encodedDataLength)}}
+                        span.net-dur {{e.durationMs === null ? "" : e.durationMs + "ms"}}
+                        i.fas.r-caret([ngClass]='expandedId === e.id ? "fa-caret-down" : "fa-caret-right"')
+                    .row-detail(*ngIf='expandedId === e.id', (click)='$event.stopPropagation()')
+                        .nd-section
+                            .nd-section-head((click)='toggleNetSection(e.id, "general", true); $event.stopPropagation()')
+                                i.fas([ngClass]='netSectionOpen(e.id, "general", true) ? "fa-caret-down" : "fa-caret-right"')
+                                | General
+                            .nd-section-body(*ngIf='netSectionOpen(e.id, "general", true)')
+                                .row-detail-kv URL: {{e.url}}
+                                .row-detail-kv Method: {{e.method}} · Status: {{e.status === null ? "pending" : e.status + " " + e.statusText}} · Type: {{e.resourceType}}
+                                .row-detail-kv MIME: {{e.mimeType || "—"}} · Size: {{fmtSize(e.encodedDataLength)}} · Duration: {{e.durationMs === null ? "—" : e.durationMs + "ms"}} · Initiator: {{e.initiator}}
+                                .row-detail-kv(*ngIf='e.redirectedFromId') ↩ redirect of entry \#{{e.redirectedFromId}}
+                                .row-detail-kv(*ngIf='e.errorText') error: {{e.errorText}}{{e.canceled ? " (canceled)" : ""}}
+                        .nd-section
+                            .nd-section-head((click)='toggleNetSection(e.id, "reqHeaders", false); $event.stopPropagation()')
+                                i.fas([ngClass]='netSectionOpen(e.id, "reqHeaders", false) ? "fa-caret-down" : "fa-caret-right"')
+                                | Request headers ({{headerEntries(e.requestHeaders).length}})
+                            .nd-section-body(*ngIf='netSectionOpen(e.id, "reqHeaders", false)')
+                                .nd-kv(*ngFor='let kv of headerEntries(e.requestHeaders)')
+                                    span.nd-kv-key {{kv[0]}}:
+                                    span {{kv[1]}}
+                        .nd-section(*ngIf='e.postData')
+                            .nd-section-head((click)='toggleNetSection(e.id, "reqBody", false); $event.stopPropagation()')
+                                i.fas([ngClass]='netSectionOpen(e.id, "reqBody", false) ? "fa-caret-down" : "fa-caret-right"')
+                                | Request body
+                            .nd-section-body(*ngIf='netSectionOpen(e.id, "reqBody", false)')
+                                pre.row-detail-text {{e.postData}}
+                        .nd-section
+                            .nd-section-head((click)='toggleNetSection(e.id, "resHeaders", false); $event.stopPropagation()')
+                                i.fas([ngClass]='netSectionOpen(e.id, "resHeaders", false) ? "fa-caret-down" : "fa-caret-right"')
+                                | Response headers ({{headerEntries(e.responseHeaders).length}})
+                            .nd-section-body(*ngIf='netSectionOpen(e.id, "resHeaders", false)')
+                                .nd-kv(*ngFor='let kv of headerEntries(e.responseHeaders)')
+                                    span.nd-kv-key {{kv[0]}}:
+                                    span {{kv[1]}}
+                        .nd-section(*ngIf='e.hasBody')
+                            .nd-section-head((click)='toggleNetSection(e.id, "resBody", false); $event.stopPropagation()')
+                                i.fas([ngClass]='netSectionOpen(e.id, "resBody", false) ? "fa-caret-down" : "fa-caret-right"')
+                                | Response body
+                            .nd-section-body(*ngIf='netSectionOpen(e.id, "resBody", false)')
+                                pre.row-detail-text(*ngIf='e.responseBody') {{e.responseBody}}
+                .recorder-note(*ngIf='networkHidden > 0') … {{networkHidden}} earlier entries hidden — export for full data
+            .recorder-scroll(*ngIf='activeTab === "events"')
+                .event-row(*ngFor='let e of eventRows; trackBy: trackById',
+                    (click)='onRowClick($event, e.id)',
+                    (mousedown)='onRowMouseDown($event, e.id)',
+                    (mouseenter)='onRowEnter(e.id)',
+                    (contextmenu)='onRowContextMenu($event, e.id)',
+                    [class.selected]='selectedIds.has(e.id)',
+                    [class.expanded]='expandedId === e.id')
+                    .row-summary
+                        span.r-t {{fmtT(e.t, eventRows[0]?.t)}}
+                        i.fas.r-kind([ngClass]='kindIcon(e.kind)')
+                        span.r-kind-label {{e.kind}}
+                        span.r-selector {{e.selector}}
+                        span.r-value(*ngIf='e.value !== undefined') = {{e.value}}
+                        span.r-snippet(*ngIf='e.snippet') “{{e.snippet}}”
+                        span.r-frame(*ngIf='isForeignFrame(e)') [{{frameHost(e)}}]
+                        i.fas.r-caret([ngClass]='expandedId === e.id ? "fa-caret-down" : "fa-caret-right"')
+                    .row-detail(*ngIf='expandedId === e.id', (click)='$event.stopPropagation()')
+                        div.row-detail-meta entry \#{{e.id}} · {{e.kind}} · t={{fmtMs(e.t)}}ms
+                        div.row-detail-kv selector: {{e.selector}}
+                        div.row-detail-kv(*ngIf='e.value !== undefined') value: {{e.value}}
+                        div.row-detail-kv(*ngIf='e.snippet') text: {{e.snippet}}
+                        div.row-detail-kv frame: {{e.frameUrl}}
+                .recorder-note(*ngIf='eventHidden > 0') … {{eventHidden}} earlier entries hidden — export for full data
+        // DOM context menu: placed by the browser at the click point
+        // (position:fixed) — no native-menu coordinate conversion involved
+        .wv-ctx-menu(*ngIf='ctxMenuOpen', [style.left.px]='ctxMenuX', [style.top.px]='ctxMenuY',
+            (mousedown)='$event.stopPropagation()')
+            .wv-ctx-item((click)='copyFromCtxMenu()')
+                i.fas.fa-copy
+                |  复制 ({{ctxMenuCount}} 条)
+            .wv-ctx-item((click)='selectAllFromCtxMenu()')
+                i.fas.fa-list
+                |  全选

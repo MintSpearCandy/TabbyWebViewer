@@ -15,12 +15,43 @@
     width: 100%;
 }
 
+// Toolbar + (page | drawer) area. The recorder drawer ALWAYS comes last
+// (order 2): bottom mode stacks it UNDER the page, right mode docks it to the
+// pane's right edge — the page keeps its normal position either way, and the
+// native view keeps tracking the shrunken content element.
+.webviewer-body {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+
+    webviewer-recorder-panel {
+        order: 2;
+    }
+
+    &.wv-right {
+        flex-direction: row;
+    }
+}
+
 .webviewer-toolbar {
     display: flex;
     align-items: center;
     gap: 2px;
     padding: 2px 4px;
     flex: 0 0 auto;
+}
+
+.recording-active i {
+    color: #e05561;
+    animation: webviewer-record-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes webviewer-record-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
 }
 
 .webviewer-address {
@@ -31,6 +62,7 @@
 .webviewer-content {
     flex: 1;
     min-height: 0;
+    min-width: 0;
     position: relative;
     outline: none;
 }
