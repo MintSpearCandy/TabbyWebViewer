@@ -5,7 +5,7 @@ const ps = (mode, ...args) => execFileSync('powershell',
     { encoding: 'utf8' }).trim()
 
 async function main () {
-    const list = await (await fetch('http://127.0.0.1:9231/json/list')).json()
+    const list = await (await fetch(`http://127.0.0.1:${process.env.CDP_PORT || 9231}/json/list`)).json()
     const t = list.find(x => x.type === 'page' && x.url.includes('index'))
     const ws = new WebSocket(t.webSocketDebuggerUrl)
     await new Promise((res, rej) => { ws.addEventListener('open', res); ws.addEventListener('error', rej) })
@@ -37,7 +37,7 @@ async function main () {
     console.log('target physical:', physX, physY)
     const mode = process.argv[2] || 'probe'
     if (mode === 'shot') {
-        console.log(ps('rclick-shot', 'test-env/real-click-menu.png', '400'))
+        console.log(ps('rclick-shot', 'D:/Env/TabbyEnv/work/real-click-menu.png', '400'))
     } else {
         console.log(ps('rclick-probe'))
     }

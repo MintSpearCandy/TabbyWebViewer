@@ -1,6 +1,6 @@
 ---
 name: webviewer-e2e
-description: WebViewer 插件的 E2E 测试套使用手册：构建/部署插件到测试 Tabby、启动与安全关闭隔离实例、运行回归脚本、编写新的 CDP 测试脚本、以及全部已知陷阱。凡是要跑 E2E/test/回归/冒烟测试、驱动 9231 测试 Tabby、写 CDP 探测脚本、截图验证 UI、或排查"测试不通过/找不到 target/clipboard 失效"之类的问题时，务必先读本 skill，不要凭记忆猜命令和端口。
+description: WebViewer 插件的 E2E 测试套使用手册：构建/部署插件到测试 Tabby、启动与安全关闭隔离实例、运行回归脚本、编写新的 CDP 测试脚本、以及全部已知陷阱。凡是要跑 E2E/test/回归/冒烟测试、驱动 9232 测试 Tabby（D:\Env\TabbyEnv\instances\wv）、写 CDP 探测脚本、截图验证 UI、或排查"测试不通过/找不到 target/clipboard 失效"之类的问题时，务必先读本 skill，不要凭记忆猜命令和端口。
 ---
 
 # WebViewer E2E 测试套速查
@@ -12,11 +12,15 @@ description: WebViewer 插件的 E2E 测试套使用手册：构建/部署插件
 ## 0. 安全红线（先读这个）
 
 - **用户的真实 Tabby 在 `D:\App\Tabby\Tabby.exe`**（便携版，插件在 `D:\App\Tabby\data\plugins\node_modules`）——**绝对不能碰**。
-- 杀测试实例**只允许按路径过滤**，禁止按进程名杀：
+- 测试实例在集中环境 `D:\Env\TabbyEnv\instances\`（本仓库专用 `wv`@9232）。启停一律走管理器：
   ```powershell
-  Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like '*tabby-port*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+  powershell -ExecutionPolicy Bypass -File D:\Env\TabbyEnv\tools\tabby.ps1 stop wv
   ```
-- 测试实例是便携版（`test-env\tabby-port\Tabby.exe`），有独立 userData，与真实 Tabby 互不干扰，可以随便折腾。
+  手杀时**只允许按路径过滤**，禁止按进程名杀：
+  ```powershell
+  Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like '*\instances\wv\*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+  ```
+- 测试实例是便携版（`instances\wv\Tabby.exe`），有独立 userData，与真实 Tabby 互不干扰，可以随便折腾。
 
 ## 1. 标准流程（每次测试都从这开始）
 
@@ -24,15 +28,15 @@ description: WebViewer 插件的 E2E 测试套使用手册：构建/部署插件
 # ① 构建（改了 src/ 之后必须）
 npm run build
 
-# ② 部署到测试实例的插件目录（两个候选位都拷，portable 位生效）
+# ② 部署到测试实例（集中环境 D:\Env\TabbyEnv：本仓库专用 wv@9232 + 共享 main@9231）
 node scripts/updateDebugCfg.js
+#    也可直接部署 release 包体：powershell D:\Env\TabbyEnv\tools\tabby.ps1 deploy <release.zip> wv
 #    追加 `--app` 同时部署到用户的真实 Tabby（D:\App\Tabby）——仅用户明确要求时用
 
-# ③ 启动测试 Tabby（专用实例，CDP 端口 9232——tabby-port 已被 GlassTheme 工作流共享）
-powershell -ExecutionPolicy Bypass -Command "Start-Process 'test-env\tabby-wv\Tabby.exe' -ArgumentList '--remote-debugging-port=9232'"
-sleep 8   # 等 CDP 就绪
+# ③ 启动测试 Tabby（专用实例 wv，CDP 端口 9232；-WaitCdp 自动等到 CDP 就绪）
+powershell -ExecutionPolicy Bypass -File D:\Env\TabbyEnv\tools\tabby.ps1 start wv -WaitCdp
 
-# ④ 验证 CDP 在线（应返回 JSON）
+# ④ CDP 在线已由 -WaitCdp 确认；也可手动验证：
 curl -s http://127.0.0.1:9232/json/version
 
 # ⑤ 跑离线冒烟（不需要 Tabby，可单独当 CI 用）
@@ -48,9 +52,9 @@ node scripts/recorderTest.js
 
 | 端口 | 用途 |
 |---|---|
-| **9232** | **WebViewer 专用实例**（`test-env/tabby-wv`）——跑测试一律用它：`CDP_PORT=9232 node scripts/...` |
-| 9231 | `test-env/tabby-port`——**已被 GlassTheme 工作流共享**（其测试会随意杀/重启它，端口也变 9225/9226），勿再用于测试 |
-| 9233 / 9223 / 9251 | 历史隔离实例（cdpProbe/seedLayout/e2eDebug/splitDoubleTest 等 relics 用） |
+| **9232** | **WebViewer 专用实例**（`D:\Env\TabbyEnv\instances\wv`，1.0.237 宿主）——跑测试一律用它：`CDP_PORT=9232 node scripts/...` |
+| 9231 | 全家桶实例 `instances\main`（4 插件全装）——**GlassTheme 的 probe 脚本以它为靶场**，可能被随意杀/重启，勿用于回归 |
+| 9233 / 9223 / 9251 | BetterConfiger 专用 / 历史隔离实例（cdpProbe/seedLayout/e2eDebug/splitDoubleTest 等 relics 用） |
 | **9311** | 脚本自建的本地测试站点（recorderTest/recorderShot 内部 `http.createServer`，脚本退出自动关） |
 
 ## 3. 稳定回归套件（有断言、有 exit code，可放心跑）
@@ -64,6 +68,7 @@ node scripts/recorderTest.js
 | `recorderTabTest.js` | 分离式 recorder tab 生命周期（录制中关 tab 会话不丢、按钮再召回、二击停止） | **先跑 `recorderShot.js`**（要留一个在录的分离 tab） |
 | `debugKitVerify.js` | **调试工具链自检**（11 项：CDP attach、console/异常捕获、焦点取证、ngModel 导航+唯一 URL 选 target、CDP 按键驱动热键引擎、引擎日志实时捕获、截图、log.txt） | 9231 实例在线；改完调试手法后跑一遍防退化 |
 | `dismissRealClick.js` | 多选取消的焦点路径独立复检（ctrl+点选 2 行 → `view.webContents.focus()` 真实焦点转移 → 断言清除） | 先跑 `recorderShot.js`；改 focus 插线后跑 |
+| `switchProfileTest.js` | **switch-profile 换入回归**：激活 split → 聚焦 pane → Ctrl-F9（实例内 switch-profile 绑定）→ 选择器模态框选 webviewer profile → 断言换入 pane 的工具栏 DOM + 原生视图几何匹配 + 已导航到 profile URL | wv 实例需 `switch-profile: Ctrl-F9` 绑定 + `WV Panel Test` 存档 profile（`addWvTestProfile.js`）+ 一个含 webviewer pane 的 split（先跑 `recorderShot.js`）；改 createView/可见性插线后必跑 |
 
 **工具类**（生产率脚本，非测试）：`recorderShot.js [out.png]` 复位+导航+开录+驱动活动+全窗截图（也是上面两个测试的铺垫器）；`closeExtraWindows.js` 关掉恢复会话带出的无 pane 多余窗口（多 index target 时 `url.includes('index')` 会连错窗口——先跑它）；`panelClip.js [out.png] [scale]` 只截 recorder 面板区域；`cdpEval.js "expr"` 主窗口一次性求值；`asarScan.js` 查 asar 内容；`package.js`/`release.js` 打包发布。
 
@@ -71,7 +76,7 @@ node scripts/recorderTest.js
 
 ## 4. 写新测试脚本：CDP 配方
 
-每个脚本各自内联一份样板（无共享模块）。新建脚本直接抄这段（出自 `scripts/cdpEval.js`）：
+**新脚本优先 require 共享模块 `D:\Env\TabbyEnv\tools\cdp-lib.js`**（`connect(portOrName)` → `{eval, send, captureConsole, hotkey, screenshot}`，含 F13 牺牲键与按 URL 选 pane 的工具函数）；仓库内老脚本仍各自内联样板，抄这段（出自 `scripts/cdpEval.js`）：
 
 ```js
 const targets = await (await fetch('http://127.0.0.1:9231/json/list')).json()
@@ -130,23 +135,30 @@ el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
 12. **"第一个 http view" 会选错 pane**：恢复会话带多个 view 时 `find(w => url.startsWith('http'))` 常命中最旧的那个。焦点/清除类测试要按**本 run 唯一 URL** 匹配；没有唯一 URL 时按**几何匹配**（drawer 所在 pane 的 `.webviewer-content` rect × 窗口 zoomFactor vs `view.getBounds()`，容差 x/y 12px、width 30px）。实测症状：焦点转移成功但目标 panel 不清——清了别的 pane 的空 panel。
 13. **主窗口 DOM 的 window 永远不持有 webContents 焦点**（焦点常驻各 view webContents，`getFocusedWebContents()` 恒指向某个 view）→ **`window:blur` 不会因点击 view 而触发**（实测证伪并弃用过该方案）。且 **view 已聚焦时 `view.focus()` 是 no-op（无 focus 事件）**——真实用户流里焦点本来就在 view 上（点击面板行不改变 webContents 焦点），点击页面时**没有任何焦点事件**。页面交互的唯一可靠信号是注入脚本的 click 上报（recorder `onPageInteract` 回调）。测 focus 转移路径时必须先把焦点 park 到别的 view 再 focus 回来制造真实转移。
 16. **真实浏览器的 sweep 收尾 click 落在公共祖先上**：mousedown 行 A → 拖到行 B → mouseup，浏览器把 click 派发到两者的**最近公共祖先**（列表容器），永远不经过行——行内的事件消费逻辑（如 `suppressNextClick`）收不到它，标记残留并吞掉用户**下一次**单击。合成测试不会自动产生这个 click，必须显式模拟（`document.querySelector('.recorder-scroll').dispatchEvent(click)`）；修复模式：每次新 mousedown 重置残留标记。
-14. **tabby-port 实例被其它项目共享**（已分家解决）：GlassTheme 的测试流程会随意杀/重启 `test-env\tabby-port`（端口漂移 9225/9226）——症状：CDP 无响应或实例凭空消失，而进程还在（log.txt 的 `cwd` 字段可分辨谁起的）。**2026-09 起已复制独立实例 `test-env\tabby-wv`（端口 9232）专供本仓库**，杀实例按路径过滤 `*tabby-wv*`；与 GlassTheme 的杀法（`*tabby-port*`）互不误伤。
+14. **全家桶实例被其它项目共享**：GlassTheme 的 probe 脚本以 `D:\Env\TabbyEnv\instances\main`（9231）为靶场，会随意杀/重启它——症状：CDP 无响应或实例凭空消失，而进程还在（log.txt 的 `cwd` 字段可分辨谁起的）。**本仓库回归一律用专用实例 `instances\wv`（9232）**，杀实例按路径过滤 `*\instances\wv\*`；与 GlassTheme 的杀法（`*\instances\main\*`）互不误伤。（2026-09-28 起 test-env 旧实例已全部收拢进 D:\Env\TabbyEnv，宿本统一 1.0.237）
 17. **`onFocusGained` 里做副作用会自摆乌龙**（实测定位，2026-09）：pane 的 `claimKeyboardFocus()` 会在用户**点击 drawer（主 DOM）**时被 split 的 focus 重发触发，并程序化调用 `view.focus()`——`onFocusGained` 随即触发。曾在此挂"清除多选"，结果用户每次在 drawer 里按下/松开（划选手势全程）选择都被自己人清掉（合成 DOM 事件测不出——它们不产生真实焦点变化；用 **CDP `Input.dispatchMouseEvent`**（走 Chromium 真实输入管线）+ clearSelection 调用栈日志即可复现定位）。**程序性焦点路径不可挂用户语义副作用**；页面点击信号用注入脚本的 click 上报（`onPageInteract`）。
 15. **连跑 recorderTest 前先干净重启实例**：状态残留（stopped 录制、上轮 flood 数据、被转移走的焦点）会造成**每次不一样的随机失败**——失败项漂移时先重启再下结论，别急着改代码。
+18. **switch-profile（replaceTab）不发 visibility**（v0.4.10 实测定位）：Tabby 的 Ctrl+Alt+T 切换窗格连接走 `SplitTabComponent.replaceTab`，换入的新 tab **收不到任何 visibility 事件**（对比 `add()` 会 emit）——依赖可见性信号的渲染（webviewer 原生视图）会整格空白，直到顶层 tab 切换触发转发。**教训一（插件侧）**：可见性别只信事件流，createView 时用 DOM 事实自检（顶层 `tab-body.content-tab-active`）。**教训二（测试侧）**：复现需真实热键路径（选择器模态框），Alt 组合注入不可靠 → 实例内把 switch-profile 绑到 Ctrl-F9；**教训三（测试侧）**：测试脚本选 pane 永远用**激活 tab 的 pane**（`__wvp` 模式），`querySelector('webviewer-tab')` 的 DOM 顺序会随会话布局漂移到背景 tab（屏外 pane，x≈-8000），导致大面积随机失败。
+19. **诊断脚本别用 `@electron/remote` 轮询观察渲染时序**：remote 是 sendSync，会饿死 rAF（实测把边框同步从 ~30ms 拖到 2.5s+）——观察渲染/动效时间线一律用**推模式**（`Runtime.consoleAPICalled` 事件捕获插件 console.debug 时间线），测完再一次性读终态。
 
 ## 6. 环境结构（重建时照此办）
 
+实例统一在集中环境 `D:\Env\TabbyEnv`（布局/铁律见其 README.md）：
+
 ```
-test-env/
-  tabby-wv/              ← WebViewer 专用实例（端口 9232；从 tabby-port 复制分家）
-    data/config.yaml     ← 测试配置（close-tab=Ctrl-Shift-W, recorderLayout, enableWelcomeTab=false）
-    data/plugins/node_modules/tabby-webviewer/   ← 部署目标①（生效位）
-  tabby-port/            ← 便携版 Tabby（被 GlassTheme 工作流共享，勿用于测试；部署目标②）
-  tabby-debug-cfg/       ← 老配置位，部署目标③（兜底）
-  *.png / *.log          ← 历次测试的截图与日志（可清理）
+D:\Env\TabbyEnv\
+  instances\wv\                       ← WebViewer 专用实例（端口 9232，instance.json 自描述）
+    data\config.yaml                  ← 测试配置（close-tab=Ctrl-Shift-W, recorderLayout, enableWelcomeTab=false）
+    data\plugins\node_modules\tabby-webviewer\   ← 部署目标①（updateDebugCfg.js / tabby.ps1 deploy）
+  instances\main\                     ← 全家桶实例（9231，GlassTheme 靶场；部署目标②）
+  fixtures\main\ …                    ← 实例基线（config + localStorage），reset/fixture 用
+  work\                               ← 截图/日志输出区（recorderShot/panelClip/debugKitVerify 默认输出）
+  tools\tabby.ps1                     ← 实例管理器（new/start/stop/status/deploy/reset/fixture/verify）
+  vendor\                             ← 宿主母本（1.0.234/235/237）
+  （仓库 test-env\ 只剩 png/log 历史产物，实例本体已迁走）
 ```
 
-从零重建：官网下 Tabby 便携 zip 解压到 `test-env/tabby-port/`，首启生成 `data/config.yaml` 后把 `close-tab` 改成 `Ctrl-Shift-W`、设 `webviewer.recorderLayout`、`enableWelcomeTab: false`，再 `npm run build && node scripts/updateDebugCfg.js`。`updateDebugCfg.js` 只拷 `dist/` + `package.json` 到两个候选位（目录不存在则跳过）。
+从零重建：`powershell D:\Env\TabbyEnv\tools\tabby.ps1 new wv 1.0.237 -Port 9232`，首启后改 `instances\wv\data\config.yaml`（`close-tab`=Ctrl-Shift-W、`webviewer.recorderLayout`、`enableWelcomeTab: false`），重启实例，再 `npm run build && node scripts/updateDebugCfg.js`。基线可 `tabby.ps1 fixture save wv` 存档、`reset wv -Full` 一键还原。
 
 ## 7. osprobe.ps1 真输入探针（Windows）
 

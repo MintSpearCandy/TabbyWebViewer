@@ -1,4 +1,4 @@
-/** End-to-end verification of the tabby-debug skill's forensic recipes:
+﻿/** End-to-end verification of the tabby-debug skill's forensic recipes:
  *  CDP attach, renderer console + exception capture, focus state, ngModel pane
  *  navigation + unique-URL target selection, CDP key injection (hotkey engine),
  *  screenshot, and Tabby's own log.txt channel. Run against the 9231 instance. */
@@ -10,12 +10,12 @@ const RUN = Date.now()
 const events = []          // every console/exception event captured this run
 let pass = 0, fail = 0
 const check = (ok, label, extra = '') => {
-    console.log(`${ok ? 'PASS' : 'FAIL'} ${label}${extra ? ' — ' + extra : ''}`)
+    console.log(`${ok ? 'PASS' : 'FAIL'} ${label}${extra ? ' 鈥?' + extra : ''}`)
     ok ? pass++ : fail++
 }
 
 async function main () {
-    // --- connect (event-capable boilerplate, per skill §3) ---
+    // --- connect (event-capable boilerplate, per skill 搂3) ---
     const targets = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()
     const main = targets.filter(t => t.type === 'page').find(t => t.url.includes('index'))
     if (!main) throw new Error('main window target not found')
@@ -33,7 +33,7 @@ async function main () {
     const evaluate = async ex => (await send('Runtime.evaluate', { expression: ex, returnByValue: true })).result?.result?.value
     check(true, 'CDP attach to main window', main.url.slice(0, 50))
 
-    // --- renderer console + exception capture (skill §3: Runtime.enable + events) ---
+    // --- renderer console + exception capture (skill 搂3: Runtime.enable + events) ---
     await send('Runtime.enable')
     listeners.push(m => {
         if (m.method === 'Runtime.consoleAPICalled') {
@@ -71,7 +71,7 @@ async function main () {
     check(f.viewCount !== undefined && f.domFocus !== undefined, 'focus state (DOM + Electron webContents)',
         `views=${f.viewCount} focusedWc=${f.focusedWc || 'null'} domFocus=${f.domFocus}`)
 
-    // --- ngModel pane navigation + unique-URL target selection (skill §3) ---
+    // --- ngModel pane navigation + unique-URL target selection (skill 搂3) ---
     const navOk = await evaluate(`(() => {
         const el = document.querySelector('webviewer-tab .webviewer-address')
         if (!el) return false
@@ -91,7 +91,7 @@ async function main () {
     check(!!paneTarget, 'ngModel navigate pane + select target by unique run marker',
         paneTarget ? paneTarget.url : (navOk ? 'no matching target after 14s' : 'no webviewer pane restored'))
     // Navigation hands keyboard ownership to the page view (claimKeyboardFocus);
-    // main-window hotkey injection no-ops until focus settles — wait it out.
+    // main-window hotkey injection no-ops until focus settles 鈥?wait it out.
     await new Promise(r => setTimeout(r, 1200))
 
     // --- CDP key injection end-to-end: Ctrl-Tab moves the active tab-header ---
@@ -99,7 +99,7 @@ async function main () {
     const headers = await evaluate(`document.querySelectorAll('tab-header').length`)
     // An xterm helper textarea holding DOM focus (even in a NON-active tab) eats
     // chord keys xterm treats as terminal sequences (Ctrl-Tab) before they reach
-    // the hotkey engine — blur it first or the injection silently no-ops.
+    // the hotkey engine 鈥?blur it first or the injection silently no-ops.
     await evaluate(`document.activeElement && document.activeElement !== document.body ? document.activeElement.blur() : 0`)
     // First CDP chord right after a pane navigation is silently dropped by the
     // engine's timeStamp dedup (hotkeys.service pushKeyEvent: a focus-handover
@@ -109,7 +109,7 @@ async function main () {
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'F13', code: 'F13', windowsVirtualKeyCode: 124, nativeVirtualKeyCode: 124 })
     await new Promise(r => setTimeout(r, 300))
     if (headers < 2) {
-        console.log('SKIP key injection — only ' + headers + ' tab(s) restored')
+        console.log('SKIP key injection 鈥?only ' + headers + ' tab(s) restored')
     } else {
         const before = await activeIdx()
         await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', modifiers: 2, key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 })
@@ -117,7 +117,7 @@ async function main () {
         await new Promise(r => setTimeout(r, 600))
         const after = await activeIdx()
         check(after !== before && after >= 0, 'CDP Input.dispatchKeyEvent drives hotkey engine (Ctrl-Tab)',
-            `active header ${before} → ${after} of ${headers}`)
+            `active header ${before} 鈫?${after} of ${headers}`)
         await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', modifiers: 10, key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 })
         await send('Input.dispatchKeyEvent', { type: 'keyUp', modifiers: 0, key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 })
         await new Promise(r => setTimeout(r, 600))
@@ -129,14 +129,14 @@ async function main () {
 
     // --- screenshot (full window) ---
     const shot = await send('Page.captureScreenshot', { format: 'png' })
-    const out = path.resolve(__dirname, '..', 'test-env', 'debugkit-shot.png')
+    const out = 'D:/Env/TabbyEnv/work/debugkit-shot.png'
     fs.writeFileSync(out, Buffer.from(shot.result.data, 'base64'))
     check(fs.statSync(out).size > 10000, 'Page.captureScreenshot saved', `${out} (${fs.statSync(out).size} bytes)`)
 
     ws.close()
 
     // --- Tabby's own log channel (main-process / node side) ---
-    const logPath = path.resolve(__dirname, '..', 'test-env', 'tabby-port', 'data', 'log.txt')
+    const logPath = 'D:/Env/TabbyEnv/instances/main/data/log.txt'
     const lines = fs.readFileSync(logPath, 'utf8').trim().split('\n')
     const recent = lines.filter(l => l.includes(`run${RUN}`) || l.includes('remote-debugging-port')).slice(-3)
     check(lines.length > 0, 'Tabby log.txt readable', `${lines.length} lines at data/log.txt`)

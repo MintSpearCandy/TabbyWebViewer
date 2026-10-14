@@ -1,21 +1,26 @@
-/** Copy the freshly built plugin into BOTH candidate plugin dirs (portable
- *  data dir wins at load, debug-cfg as fallback).
+/** Copy the freshly built plugin into the central debug environment instances
+ *  (D:\Env\TabbyEnv). See that env's README / tabby.ps1 for the full workflow.
  *
  *  `--app` additionally deploys to the user's REAL Tabby at D:\App\Tabby —
  *  opt-in only: never fold the real environment into the default run.
- *  Restart Tabby afterwards to load the new version. */
+ *  Restart the instance afterwards to load the new version. */
 const fs = require('fs')
 const path = require('path')
 const src = path.resolve(__dirname, '..')
 const targets = [
-    // WebViewer-DEDICATED instance (port 9232) — tabby-port is shared with
-    // the GlassTheme workflow, which kills/restarts it at will
-    path.resolve(__dirname, '..', 'test-env', 'tabby-wv', 'data', 'plugins', 'node_modules', 'tabby-webviewer'),
-    path.resolve(__dirname, '..', 'test-env', 'tabby-port', 'data', 'plugins', 'node_modules', 'tabby-webviewer'),
-    path.resolve(__dirname, '..', 'test-env', 'tabby-debug-cfg', 'plugins', 'node_modules', 'tabby-webviewer'),
+    // WebViewer-DEDICATED instance (port 9232); main (9231) is the all-plugins instance
+    'D:\\Env\\TabbyEnv\\instances\\wv\\data\\plugins\\node_modules\\tabby-webviewer',
+    'D:\\Env\\TabbyEnv\\instances\\main\\data\\plugins\\node_modules\\tabby-webviewer',
 ]
 if (process.argv.includes('--app')) {
-    targets.push('D:\\App\\Tabby\\data\\plugins\\node_modules\\tabby-webviewer')
+    // The real install: portable layout (data\plugins next to the exe) when
+    // present, otherwise the installed-app default %APPDATA%\tabby
+    const portable = 'D:\\App\\Tabby\\data\\plugins\\node_modules\\tabby-webviewer'
+    if (fs.existsSync(path.dirname(path.dirname(portable)))) {
+        targets.push(portable)
+    } else if (process.env.APPDATA) {
+        targets.push(path.join(process.env.APPDATA, 'tabby', 'plugins', 'node_modules', 'tabby-webviewer'))
+    }
 }
 for (const dst of targets) {
     if (!fs.existsSync(path.dirname(dst))) {

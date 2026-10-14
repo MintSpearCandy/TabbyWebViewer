@@ -4,7 +4,7 @@ const fs = require('fs')
 const PORT = process.env.CDP_PORT || 9231
 
 async function main () {
-    const OUT = process.argv[2] || 'test-env/panel-clip.png'
+    const OUT = process.argv[2] || 'D:/Env/TabbyEnv/work/panel-clip.png'
     const SCALE = parseFloat(process.argv[3] || '2')
     const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()
     const t = list.find(x => x.type === 'page' && x.url.includes('index'))

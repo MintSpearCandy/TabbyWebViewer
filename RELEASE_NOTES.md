@@ -1,3 +1,18 @@
+# v0.4.10
+
+switch-profile（Ctrl+Alt+T）切换窗格连接后页面空白的修复。
+
+## 修复
+
+- **switch-profile 换入 webviewer 窗格后整格空白**（需切走 tab 再切回才显示）——
+  Tabby 的 switch-profile 流程（`SplitTabComponent.replaceTab`）把新 tab 原位换进
+  分屏时**不向其发送 visibility 事件**：tab 的 `visibility$` 保持初值 false，
+  webviewer 的原生视图因此停在隐藏态（无边框同步、无渲染），直到下一次顶层
+  tab 切换触发可见性转发才恢复。终端窗格不受影响（其渲染不依赖可见性信号），
+  仅原生视图类 tab 中招。现在创建视图时做 DOM 事实自检：若本窗格所在的顶层
+  tab-body 即为激活态（`.content-tab-active`），直接按可见处理——不再单纯依赖
+  事件转发，任何"漏发可见性"的路径都能自愈
+
 # v0.4.9
 
 录制条目多选的取消行为补全、划选手势语义修正、页签栏造型重做、窄窗格适配。

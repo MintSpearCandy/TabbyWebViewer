@@ -116,6 +116,27 @@ async function main () {
     })
     await ms.send('Runtime.enable')
 
+    // ACTIVE-pane webviewer picker: the first webviewer-tab in DOM order may
+    // belong to a background tab (parked offscreen — pitfall #3); always
+    // drive the pane of the ACTIVE top-level tab-body.
+    await evaluate(ms, `window.__wvp = () => {
+        const bodies = [...document.querySelectorAll('tab-body')]
+        const act = bodies.find(b => b.classList.contains('content-tab-active'))
+        return (act && act.querySelector('webviewer-tab'))
+            || [...document.querySelectorAll('webviewer-tab')].find(t => t.getBoundingClientRect().x > -100)
+            || document.querySelector('webviewer-tab')
+    }`)
+    // ensure the ACTIVE tab actually contains a webviewer pane
+    await evaluate(ms, `(() => {
+        const bodies = [...document.querySelectorAll('tab-body')]
+        const act = bodies.find(b => b.classList.contains('content-tab-active'))
+        if (!(act && act.querySelector('webviewer-tab'))) {
+            const i = bodies.findIndex(b => b.querySelector('webviewer-tab'))
+            if (i >= 0) [...document.querySelectorAll('tab-header')][i]?.click()
+        }
+        return 1
+    })()`)
+
     // 1. open a pane if needed, then ALWAYS navigate the FIRST pane to the
     //    test page via its address bar (ngModel input + Enter) ---------------
     if (await evaluate(ms, `document.querySelectorAll('webviewer-tab').length`) === 0) {
@@ -152,7 +173,7 @@ async function main () {
     }
     // Navigate the first pane (the one we will record) to the test page
     await evaluate(ms, `(() => {
-        const el = document.querySelector('webviewer-tab .webviewer-address')
+        const el = window.__wvp()?.querySelector('.webviewer-address')
         el.value = '127.0.0.1:${SITE}/?${RUN}'
         el.dispatchEvent(new Event('input', { bubbles: true }))
         el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
@@ -179,27 +200,27 @@ async function main () {
     for (let i = 0; i < 6; i++) {
         const st = await evaluate(ms, `(() => ({
             panel: document.querySelector('webviewer-recorder-panel') !== null,
-            rec: document.querySelector('webviewer-tab .recording-active') !== null,
+            rec: window.__wvp()?.querySelector('.recording-active') !== null,
         }))()`)
         if (!st.panel && !st.rec) {
             break
         }
         if (st.rec) {
-            await evaluate(ms, `document.querySelector('webviewer-tab .fa-circle-dot')?.closest('button')?.click()`)  // stop (or re-summon if hidden)
+            await evaluate(ms, `window.__wvp()?.querySelector('.fa-circle-dot')?.closest('button')?.click()`)  // stop (or re-summon if hidden)
         } else {
             await evaluate(ms, `document.querySelector('webviewer-recorder-panel .fa-chevron-down')?.closest('button')?.click()`)  // close → dispose
         }
         await sleep(400)
     }
 
-    await evaluate(ms, `document.querySelector('webviewer-tab .fa-circle-dot')?.closest('button')?.click() ?? 'no-btn'`)
+    await evaluate(ms, `window.__wvp()?.querySelector('.fa-circle-dot')?.closest('button')?.click() ?? 'no-btn'`)
     await sleep(300)
     let hasPanel = await evaluate(ms, `!!${PANEL}`)
     check('drawer opened', hasPanel)
     let active = false
     for (let i = 0; i < 12; i++) {
         await sleep(300)
-        if (await evaluate(ms, `document.querySelector('webviewer-tab .recording-active') !== null`)) { active = true; break }
+        if (await evaluate(ms, `window.__wvp()?.querySelector('.recording-active') !== null`)) { active = true; break }
     }
     check('record button pulsing', active)
     check('tabs: plain UI buttons with label + dim count', await evaluate(ms, `(() => {
@@ -208,16 +229,22 @@ async function main () {
             && !!t.querySelector('.r-tab-label') && !!t.querySelector('.r-tab-count')
     })()`))
 
-    // header geometric stability: one fixed-height row — tabs/actions blocks
-    // keep identical rects on EVERY tab (the network-only tools block lives
-    // inside the row), and the active tab's TOP edge matches an inactive
-    // tab's (activation may only change its lower face)
-    const headerRect = sel => evaluate(ms, `(() => {
-        const el = document.querySelector('${sel}')
-        if (!el) return null
-        const b = el.getBoundingClientRect()
-        // position only — widths legitimately change as tab counts grow
-        return Math.round(b.x * 10) + ',' + Math.round(b.y * 10)
+    // header geometric stability, layout-mode aware:
+    //  - wide drawer (single line): tabs/actions keep identical positions on
+    //    every tab (the network-only tools live inside the row)
+    //  - narrow drawer (wrapped): the TABS block must stay put; the tools
+    //    legitimately move to a second line — assert instead that actions
+    //    stay right-aligned on whichever line they occupy
+    // In both modes the active tab's TOP edge must match an inactive tab's.
+    const headerGeom = () => evaluate(ms, `(() => {
+        const q = s => document.querySelector(s)
+        const r = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), right: Math.round(b.right) } }
+        const header = q('.recorder-header'), tabs = q('.recorder-tabs'), tools = q('.recorder-tools'), actions = q('.recorder-actions')
+        if (!header || !tabs || !actions) return null
+        return JSON.stringify({
+            header: r(header), tabs: r(tabs), actions: r(actions),
+            wrapped: tools ? tools.getBoundingClientRect().y > tabs.getBoundingClientRect().y + 10 : false,
+        })
     })()`)
     const tabTops = () => evaluate(ms, `(() => {
         const act = document.querySelector('.recorder-tab.active')
@@ -225,13 +252,22 @@ async function main () {
         if (!act || !inact) return null
         return Math.abs(act.getBoundingClientRect().y - inact.getBoundingClientRect().y).toFixed(1)
     })()`)
-    const rectConsole = await headerRect('.recorder-header') + '|' + await headerRect('.recorder-tabs') + '|' + await headerRect('.recorder-actions')
+    const base = JSON.parse(await headerGeom())
     let geomOk = true, geomWhy = ''
     for (const [name, idx] of [['network', 1], ['events', 2]]) {
         await evaluate(ms, `(() => { const t = [...document.querySelectorAll('.recorder-tab')][${idx}]; if (t) t.click(); return 1 })()`)
         await sleep(350)
-        const rect = await headerRect('.recorder-header') + '|' + await headerRect('.recorder-tabs') + '|' + await headerRect('.recorder-actions')
-        if (rect !== rectConsole) { geomOk = false; geomWhy += ` ${name}: ${rectConsole} → ${rect}` }
+        const g = JSON.parse(await headerGeom())
+        if (!g) { geomOk = false; geomWhy += ` ${name}:missing`; continue }
+        // tabs never move in either mode
+        if (g.tabs.x !== base.tabs.x || g.tabs.y !== base.tabs.y) { geomOk = false; geomWhy += ` ${name}:tabs-moved` }
+        if (!g.wrapped) {
+            // single line: actions keep their position
+            if (g.actions.x !== base.actions.x || g.actions.y !== base.actions.y) { geomOk = false; geomWhy += ` ${name}:actions-moved` }
+        } else {
+            // wrapped: actions right-aligned on their line (6px header padding)
+            if (Math.abs(g.actions.right - (g.header.right - 6)) > 3) { geomOk = false; geomWhy += ` ${name}:actions-not-right` }
+        }
         const tops = await tabTops()
         if (tops === null || parseFloat(tops) > 0.3) { geomOk = false; geomWhy += ` ${name}:tops=${tops}` }
     }
@@ -241,17 +277,17 @@ async function main () {
         geomWhy ? ('header|tabs|actions rects' + geomWhy) : 'identical on console/network/events; active top = inactive top')
 
     check('bottom layout: drawer sits BELOW the page area', await evaluate(ms, `(() => {
-        const pane = document.querySelector('webviewer-tab')
+        const pane = window.__wvp()
         const host = pane?.querySelector('webviewer-recorder-panel')
         const content = pane?.querySelector('.webviewer-content')
         return !!host && !!content && host.getBoundingClientRect().y > content.getBoundingClientRect().y
     })()`))
     const drawerH0 = await evaluate(ms,
-        `Math.round(document.querySelector('webviewer-tab webviewer-recorder-panel')?.getBoundingClientRect().height ?? 0)`)
+        `Math.round(window.__wvp()?.querySelector('webviewer-recorder-panel')?.getBoundingClientRect().height ?? 0)`)
 
     // navigate once DURING recording (hash nav → navigate event + document reload)
     await evaluate(ms, `(() => {
-        const el = document.querySelector('webviewer-tab .webviewer-address')
+        const el = window.__wvp()?.querySelector('.webviewer-address')
         el.value = '127.0.0.1:${SITE}/?${RUN}#rec'
         el.dispatchEvent(new Event('input', { bubbles: true }))
         el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
@@ -297,7 +333,7 @@ async function main () {
         const r = require('@electron/remote')
         const win = r.getCurrentWindow()
         const f = win.webContents.getZoomFactor()
-        const content = document.querySelector('webviewer-tab webviewer-recorder-panel')
+        const content = window.__wvp()?.querySelector('webviewer-recorder-panel')
             ?.closest('webviewer-tab')?.querySelector('.webviewer-content')
         const cr = content.getBoundingClientRect()
         const hit = win.contentView.children
@@ -639,7 +675,7 @@ async function main () {
     await sleep(1500)
     const banner = await evaluate(ms, `document.querySelector('.recorder-banner')?.textContent ?? ''`)
     check('F12 → paused banner (devtools)', /暂停/.test(banner) && /DevTools/.test(banner), banner)
-    check('F12 → button stops pulsing', await evaluate(ms, `document.querySelector('webviewer-tab .recording-active') === null`))
+    check('F12 → button stops pulsing', await evaluate(ms, `window.__wvp()?.querySelector('.recording-active') === null`))
 
     await evaluate(ms, `(() => {
         const r = require('@electron/remote')
@@ -650,40 +686,40 @@ async function main () {
     await sleep(2000)
     const banner2 = await evaluate(ms, `document.querySelector('.recorder-banner')?.textContent ?? 'none'`)
     check('devtools closed → recording resumed', banner2 === 'none', banner2)
-    check('resume → button pulsing again', await evaluate(ms, `document.querySelector('webviewer-tab .recording-active') !== null`))
+    check('resume → button pulsing again', await evaluate(ms, `window.__wvp()?.querySelector('.recording-active') !== null`))
 
     // 8. stop / start from the toolbar ------------------------------------------
-    await evaluate(ms, `document.querySelector('webviewer-tab .recording-active')?.closest('button').click()`)
+    await evaluate(ms, `window.__wvp()?.querySelector('.recording-active')?.closest('button').click()`)
     await sleep(600)
     const stopBanner = await evaluate(ms, `document.querySelector('.recorder-banner')?.textContent ?? ''`)
     check('toolbar click → stopped', /已停止/.test(stopBanner), stopBanner)
-    await evaluate(ms, `document.querySelector('webviewer-tab .fa-circle-dot')?.closest('button').click()`)
+    await evaluate(ms, `window.__wvp()?.querySelector('.fa-circle-dot')?.closest('button').click()`)
     await sleep(600)
     check('toolbar click → recording again', await evaluate(ms,
-        `document.querySelector('.recorder-banner') === null && document.querySelector('webviewer-tab .recording-active') !== null`))
+        `document.querySelector('.recorder-banner') === null && window.__wvp()?.querySelector('.recording-active') !== null`))
 
     // 9. data survives stop --------------------------------------------------------
-    await evaluate(ms, `document.querySelector('webviewer-tab .recording-active')?.closest('button').click()`)  // stop again
+    await evaluate(ms, `window.__wvp()?.querySelector('.recording-active')?.closest('button').click()`)  // stop again
     await sleep(400)
     await evaluate(ms, `[...document.querySelectorAll('.recorder-tab')][0].click()`)
     await sleep(300)
     check('data kept after stop', await evaluate(ms, `document.querySelectorAll('.console-row').length`) > 0)
 
     // 10. re-summon: hide drawer while recording → record click brings it back ----
-    await evaluate(ms, `document.querySelector('webviewer-tab .fa-circle-dot')?.closest('button').click()`)  // start again
+    await evaluate(ms, `window.__wvp()?.querySelector('.fa-circle-dot')?.closest('button').click()`)  // start again
     await sleep(600)
     await evaluate(ms, `document.querySelector('webviewer-recorder-panel .fa-chevron-down')?.closest('button').click()`)  // hide
     await sleep(400)
     check('hide drawer keeps recording',
-        await evaluate(ms, `document.querySelector('webviewer-recorder-panel') === null && document.querySelector('webviewer-tab .recording-active') !== null`))
-    await evaluate(ms, `document.querySelector('webviewer-tab .fa-circle-dot')?.closest('button').click()`)  // re-summon
+        await evaluate(ms, `document.querySelector('webviewer-recorder-panel') === null && window.__wvp()?.querySelector('.recording-active') !== null`))
+    await evaluate(ms, `window.__wvp()?.querySelector('.fa-circle-dot')?.closest('button').click()`)  // re-summon
     await sleep(500)
     check('record click re-summons hidden drawer (still recording)',
-        await evaluate(ms, `document.querySelector('webviewer-recorder-panel') !== null && document.querySelector('webviewer-tab .recording-active') !== null && document.querySelector('.recorder-banner') === null`))
+        await evaluate(ms, `document.querySelector('webviewer-recorder-panel') !== null && window.__wvp()?.querySelector('.recording-active') !== null && document.querySelector('.recorder-banner') === null`))
 
     // 11. fixed height under a 150-entry flood -------------------------------
     const drawerH1 = await evaluate(ms,
-        `Math.round(document.querySelector('webviewer-tab webviewer-recorder-panel')?.getBoundingClientRect().height ?? 0)`)
+        `Math.round(window.__wvp()?.querySelector('webviewer-recorder-panel')?.getBoundingClientRect().height ?? 0)`)
     check(`drawer height fixed under flood (${drawerH0}px → ${drawerH1}px)`, drawerH0 > 0 && Math.abs(drawerH1 - drawerH0) <= 1)
 
     console.log('')

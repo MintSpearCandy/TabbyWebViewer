@@ -186,7 +186,26 @@ export class WebViewerTabComponent extends BaseTabComponent implements OnInit, A
         if (this.lastVisible) {
             this.view.setVisible(true)
             this.occlusion.start()
+        } else if (this.hostedInActiveTabBody()) {
+            // Tabby's switch-profile flow (SplitTabComponent.replaceTab) swaps
+            // a new tab into a live split WITHOUT emitting visibility to it —
+            // the tab's visibility$ BehaviorSubject keeps its initial false,
+            // so lastVisible alone would leave the view hidden until the
+            // next top-level tab switch. DOM truth-check instead: when our
+            // top-level tab-body is the active one, we ARE on screen.
+            // (Terminal tabs are immune to this — they don't gate rendering
+            // on the visibility signal; native views do.)
+            this.lastVisible = true
+            this.view.setVisible(true)
+            this.occlusion.start()
+            this.markTopmostFocused()
         }
+    }
+
+    /** Whether the top-level tab-body hosting this pane is the active one. */
+    private hostedInActiveTabBody (): boolean {
+        const body = (this.content?.nativeElement as HTMLElement | undefined)?.closest?.('tab-body')
+        return !!body && body.classList.contains('content-tab-active')
     }
 
     // ------------------------------------------------------------ state ---

@@ -9,7 +9,7 @@ const PORT = process.env.CDP_PORT || 9231
 const SITE = 9311
 const RUN = 'shot' + Date.now()
 const PAGE_URL = `http://127.0.0.1:${SITE}/?${RUN}`
-const OUT = process.argv[2] || 'test-env/recorder-shot.png'
+const OUT = process.argv[2] || 'D:/Env/TabbyEnv/work/recorder-shot.png'
 
 const PAGE = `<!doctype html><html><body style="font-family:sans-serif">
 <h3>Demo page</h3><input id="name" placeholder="name"><input id="pw" type="password">
